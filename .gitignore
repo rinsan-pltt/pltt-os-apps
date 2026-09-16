@@ -32,7 +32,11 @@ out/
 *.tsbuildinfo
 
 # Palette CLI working directory: local dev storage, sandbox state, bundles.
-.palette/
+# The .env.example inside it is documentation, not state, so it is kept —
+# `**/` because a pattern containing a slash is otherwise anchored to this
+# file's directory, and these live one level down in each app.
+**/.palette/*
+!**/.palette/.env.example
 
 # ------------------------------------------------------------------- os ----
 .DS_Store
