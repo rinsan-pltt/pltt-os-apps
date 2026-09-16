@@ -38,6 +38,12 @@ out/
 **/.palette/*
 !**/.palette/.env.example
 
+# ------------------------------------------------------- local tool state --
+# Agent/editor configuration and scratch output: useful locally, noise in the
+# repo, and it drifts per machine.
+.claude/
+.graphify_chunks.json
+
 # ------------------------------------------------------------------- os ----
 .DS_Store
 Thumbs.db
