@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------- secrets --
+# Never commit these. Each one is a live credential: the .env files carry API
+# keys and gateway tokens, and credentials.json is a Google service-account
+# private key. Anything pushed to a remote must be treated as compromised and
+# rotated, even if a later commit deletes it — the object stays in history.
+.env
+.env.*
+!.env.example
+!.env.*.example
+credentials.json
+service-account*.json
+*.pem
+*.p12
+*.key
+
+# ------------------------------------------------------------- generated --
+# Reinstallable from the lockfiles / pyproject, and ~5.5 GB across these apps.
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build output and tool state.
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Palette CLI working directory: local dev storage, sandbox state, bundles.
+.palette/
+
+# ------------------------------------------------------------------- os ----
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

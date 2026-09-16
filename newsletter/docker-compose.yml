@@ -1,0 +1,29 @@
+services:
+  postgres:
+    container_name: paletteos-newsletter-postgres
+    hostname: postgres
+    image: ${POSTGRES_IMAGE:-postgres:18}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-newsletter}
+      POSTGRES_USER: ${POSTGRES_USER:-newsletter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-newsletter_password}
+    ports:
+      - "${POSTGRES_PORT:-55447}:5432"
+    volumes:
+      - newsletter_postgres:/var/lib/postgresql
+    networks:
+      - newsletter_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-newsletter} -d ${POSTGRES_DB:-newsletter}"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  newsletter_postgres:
+
+networks:
+  newsletter_network:
+    name: ${DOCKER_NETWORK:-newsletter-network}
+    driver: bridge

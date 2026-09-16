@@ -1,0 +1,16 @@
+{
+  "name": "use-sync-external-store",
+  "version": "1.6.0",
+  "description": "ESM-only drop-in for the real use-sync-external-store package — the real package's shim files are CommonJS and call require('react') internally, which the Palette CLI's esbuild bundle can't resolve since react is externalized for the browser. React 19 ships useSyncExternalStore natively, so this just re-implements the same exports on top of it via plain ESM imports.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./with-selector": "./with-selector.js",
+    "./with-selector.js": "./with-selector.js",
+    "./shim": "./shim/index.js",
+    "./shim/index.js": "./shim/index.js",
+    "./shim/with-selector": "./shim/with-selector.js",
+    "./shim/with-selector.js": "./shim/with-selector.js",
+    "./package.json": "./package.json"
+  }
+}

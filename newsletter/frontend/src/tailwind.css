@@ -1,0 +1,229 @@
+@import "tailwindcss";
+
+/* Dark-mode variant, keyed on the app root's own class + data-attribute.
+   Without this, Tailwind's default `dark:` variant is `@media
+   (prefers-color-scheme: dark)`, which does NOT track the Palette OS appearance
+   in the deployed webview — so `dark:` accents/badges stayed in their light base
+   values even in dark mode. Anchoring the variant on the app root instead makes
+   `dark:` follow the app theme in every runtime. Dark is the DEFAULT (the root
+   always carries `.newsletter-app`); `data-theme="light"` on that root turns the
+   `dark:` utilities off. Kept in lockstep with the dark-by-default token blocks
+   below. */
+@custom-variant dark (&:is(.newsletter-app:not([data-theme="light"]) *, .newsletter-app:not([data-theme="light"])));
+
+/* App-chrome semantic tokens. These style OUR UI shell only (nav, panels,
+   cards, modals, editor scaffolding) — never the newsletter/brand palette
+   data that block-view.tsx, preview.tsx, overlay-layer.tsx, designer.tsx,
+   theme-picker.tsx etc. render from theme.palette/cs.* — those stay literal
+   hex values driven by the user's own brand theme, independent of the app's
+   light/dark mode. */
+/* Light-mode tokens. The second selector applies them DIRECTLY to the app root
+   when the app resolves to light — see the dark block below for why the theme is
+   keyed on the root's own class + data-attribute rather than the `.dark` class. */
+:root,
+.newsletter-app[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --fg-subtle: #94a3b8;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+}
+
+/* Dark-mode tokens, applied to the app root by DEFAULT. In the published/OS
+   build the CLI scopes every selector under `[data-palette-plugin-root]` and
+   rewrites `:root` to it; relying on the `.dark` class alone left the whole app
+   on the light `:root` values in production (it only worked in `pltt dev`, which
+   doesn't scope). Declaring the dark tokens directly on `.newsletter-app` (the
+   class the root always carries) makes dark the safe default, and
+   `[data-theme="light"]` above overrides to light when the OS is light. The
+   `.dark` class is kept for any consumer that still targets it. */
+.dark,
+.newsletter-app {
+  color-scheme: dark;
+  --bg: #0b1120;
+  --surface: #111827;
+  --surface-2: #1a2333;
+  --fg: #e5e9f2;
+  --fg-muted: #9aa6bd;
+  --fg-subtle: #66738f;
+  --border: #232d3f;
+  --border-strong: #34405a;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+}
+
+@theme {
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-900: #312e81;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Height chain for the app shell.
+ *
+ * The shell is `h-[100dvh] max-h-full` (see components/shell/app-shell.tsx):
+ * `max-h-full` is what stops it overflowing a host container SHORTER than the
+ * viewport, but a percentage max-height resolves to nothing unless every
+ * ancestor has a definite height — and nothing above it did. So on the OS
+ * server the shell took the full 100dvh, overflowed the plugin's container by
+ * whatever sits above it, and the page scrolled even with no content in it.
+ *
+ * `html, body` is the right way to say this in BOTH runtimes: the publish
+ * pipeline rewrites `html`, `body` and `:root` to `[data-palette-plugin-root]`
+ * (lib/css-scope.js, `isRootLike`), so this becomes a definite height on the
+ * plugin root itself in the published build, and is the ordinary document
+ * height chain under `pltt dev`. Paired with `h-full` on the app root div in
+ * index.tsx, `max-h-full` finally has something to clamp to. */
+html,
+body {
+  height: 100%;
+}
+
+/* App-shell geometry + motion. Kept as custom properties rather than literal
+   utility values because the sidebar↔rail transition animates
+   `grid-template-columns` between two of them — a class swap between two
+   widths jumps in a single frame, whereas two interpolatable lengths slide.
+   Declared on `:root` AND on the app root: the published build scopes every
+   selector under `[data-palette-plugin-root]` and rewrites `:root` to it, so
+   the second selector is what guarantees the values exist in `pltt dev` too. */
+:root,
+.newsletter-app {
+  --nl-sidebar-w: 15.5rem;
+  --nl-rail-w: 4rem;
+  --nl-topbar-h: 3.5rem;
+  --nl-dur-fast: 150ms;
+  --nl-dur-slow: 300ms;
+  --nl-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --nl-shadow-lg: 0 12px 28px -8px rgb(2 6 23 / 0.35), 0 2px 6px rgb(2 6 23 / 0.2);
+}
+
+/* Someone who asked for less movement gets the layout change instantly — the
+   sidebar still collapses, it just doesn't slide. Zeroing the token is enough
+   because every shell transition reads its duration from it. */
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  .newsletter-app {
+    --nl-dur-fast: 0ms;
+    --nl-dur-slow: 0ms;
+  }
+}
+
+.newsletter-app {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.newsletter-app * {
+  box-sizing: border-box;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.toast-in {
+  animation: toast-in 180ms ease-out;
+}
+
+/* thin scrollbars for panel-heavy editor */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+
+[contenteditable]:focus {
+  outline: none;
+}
+
+/* Rich text (Tiptap editor + read-only rendered HTML) */
+.richtext .ProseMirror,
+.richtext {
+  outline: none;
+}
+.richtext a {
+  color: var(--color-brand-600);
+  text-decoration: underline;
+}
+.richtext ul {
+  list-style: disc;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.richtext ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+  margin: 0.25em 0;
+}
+.richtext li {
+  margin: 0.1em 0;
+}
+.richtext p {
+  margin: 0 0 0.5em;
+}
+.richtext p:last-child {
+  margin-bottom: 0;
+}
+.richtext mark {
+  background-color: var(--hl-default, #fde68a);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.richtext s {
+  text-decoration: line-through;
+}
+.richtext blockquote {
+  border-left: 3px solid #cbd5e1;
+  padding-left: 0.75em;
+  color: #475569;
+  margin: 0.4em 0;
+}
+.richtext code {
+  background: #f1f5f9;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+.richtext hr {
+  border: none;
+  border-top: 1px solid #cbd5e1;
+  margin: 0.6em 0;
+}
+/* Tiptap placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--border-strong);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

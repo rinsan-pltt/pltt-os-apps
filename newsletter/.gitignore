@@ -1,0 +1,7 @@
+.palette/.env.local
+.palette/*.env
+.palette/credentials.json
+credentials.json
+.env
+.env.local
+.env.production

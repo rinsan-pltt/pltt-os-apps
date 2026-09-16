@@ -1,0 +1,38 @@
+{
+  "name": "newsletter",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "tailwind:build": "tailwindcss -i ./frontend/src/tailwind.css -o ./frontend/src/tailwind.generated.css --minify",
+    "pltt:build": "npm run tailwind:build && pltt build",
+    "pltt:test": "pltt test",
+    "pltt:package": "npm run tailwind:build && pltt package",
+    "pltt:publish": "npm run tailwind:build && pltt publish"
+  },
+  "dependencies": {
+    "@palettelab/sdk": "^0.1.31",
+    "@tiptap/extension-color": "^3.27.1",
+    "@tiptap/extension-highlight": "^3.27.1",
+    "@tiptap/extension-link": "^3.27.1",
+    "@tiptap/extension-placeholder": "^3.27.1",
+    "@tiptap/extension-subscript": "^3.27.1",
+    "@tiptap/extension-superscript": "^3.27.1",
+    "@tiptap/extension-text-align": "^3.27.1",
+    "@tiptap/extension-text-style": "^3.27.1",
+    "@tiptap/extension-underline": "^3.27.1",
+    "@tiptap/pm": "^3.27.1",
+    "@tiptap/react": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
+    "lucide-react": "^1.29.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@palettelab/cli": "^0.3.63",
+    "@tailwindcss/cli": "^4.2.0",
+    "tailwindcss": "^4.2.0"
+  },
+  "overrides": {
+    "use-sync-external-store": "file:./vendor/use-sync-external-store"
+  }
+}
