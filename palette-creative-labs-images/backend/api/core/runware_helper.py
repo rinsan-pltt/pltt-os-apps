@@ -1,0 +1,129 @@
+"""Runware fallback generation helpers, ported from pltt-agg.
+
+API keys are passed in by the caller (read from `ctx.secret("RUNWARE_KEY")`).
+"""
+
+from __future__ import annotations
+
+import math
+import logging
+from typing import List, Optional, Tuple
+
+logger = logging.getLogger("pltt_creative.runware")
+
+RUNWARE_FALLBACK_MAP = {
+    "nano_banana_pro": "google:4@2",
+    "openai/gpt-image-2": "openai:gpt-image@2",
+    "flux_schnell": "runware:100@1",
+}
+
+# Runware image inference constraints: each side must be a multiple of 64 and
+# the total pixel count must fall within [MIN, MAX]. A naive width*ratio for
+# non-square ratios (e.g. 9:16 at 1K → 576x1024 = 589,824) falls below MIN and
+# is rejected; 4K landscape overshoots MAX — so we size to a target megapixel
+# count instead and snap to the constraints.
+_RUNWARE_MIN_PIXELS = 655_360
+_RUNWARE_MAX_PIXELS = 8_294_400
+
+# Some image models only accept an enumerated set of dimensions per
+# (aspect_ratio, resolution); the generic megapixel sizing is rejected with
+# `unsupportedDimensions`. Map those models to their exact allowed sizes.
+# google:4@2 == nano_banana_pro.
+_RUNWARE_IMAGE_MODEL_DIMENSIONS: dict = {
+    "google:4@2": {
+        "1:1":  {"1K": (1024, 1024), "2K": (2048, 2048), "4K": (4096, 4096)},
+        "16:9": {"1K": (1376, 768),  "2K": (2752, 1536), "4K": (5504, 3072)},
+        "9:16": {"1K": (768, 1376),  "2K": (1536, 2752), "4K": (3072, 5504)},
+        "4:3":  {"1K": (1200, 896),  "2K": (2400, 1792), "4K": (4800, 3584)},
+        "3:4":  {"1K": (896, 1200),  "2K": (1792, 2400), "4K": (3584, 4800)},
+        "21:9": {"1K": (1548, 672),  "2K": (3168, 1344), "4K": (6336, 2688)},
+    },
+}
+
+
+def get_runware_model(fal_model_name: str) -> Optional[str]:
+    return RUNWARE_FALLBACK_MAP.get(fal_model_name)
+
+
+def aspect_ratio_to_dimensions(aspect_ratio: str, resolution: str = "1K", model: Optional[str] = None) -> Tuple[int, int]:
+    """Converts an aspect ratio + resolution label to (width, height) for Runware.
+
+    When `model` only accepts an enumerated set of dimensions, the exact allowed
+    size for the (aspect_ratio, resolution) pair is returned; otherwise the
+    dimensions are sized to a target megapixel count for the resolution.
+    """
+    # Model-specific exact dimensions (e.g. nano_banana_pro / google:4@2).
+    model_dims = _RUNWARE_IMAGE_MODEL_DIMENSIONS.get(model or "")
+    if model_dims:
+        by_res = model_dims.get(aspect_ratio) or model_dims.get("1:1")
+        if by_res:
+            return by_res.get(resolution) or by_res.get("1K") or next(iter(by_res.values()))
+
+    ratio_map = {
+        "1:1": 1.0,
+        "16:9": 16 / 9,
+        "9:16": 9 / 16,
+        "4:3": 4 / 3,
+        "3:4": 3 / 4,
+        "21:9": 21 / 9,
+    }
+    ratio = ratio_map.get(aspect_ratio, 1.0)
+
+    target_area = {"1K": 1024 * 1024, "2K": 2048 * 2048, "4K": _RUNWARE_MAX_PIXELS}.get(
+        resolution, 1024 * 1024
+    )
+    target_area = max(_RUNWARE_MIN_PIXELS, min(_RUNWARE_MAX_PIXELS, target_area))
+
+    def snap(v: float) -> int:
+        return max(64, int(round(v / 64)) * 64)
+
+    width = snap(math.sqrt(target_area * ratio))
+    height = snap(math.sqrt(target_area / ratio))
+
+    while width * height > _RUNWARE_MAX_PIXELS:
+        if width >= height:
+            width -= 64
+        else:
+            height -= 64
+    while width * height < _RUNWARE_MIN_PIXELS:
+        if width <= height:
+            width += 64
+        else:
+            height += 64
+
+    return width, height
+
+
+async def generate_image_runware(
+    api_key: str,
+    runware_model_air: str,
+    prompt: str,
+    width: int = 1024,
+    height: int = 1024,
+    num_images: int = 1,
+    reference_images: Optional[List[str]] = None,
+) -> List[str]:
+    from runware import Runware, IImageInference
+
+    if not api_key:
+        raise ValueError("RUNWARE_KEY is not configured")
+
+    refs = [u for u in (reference_images or []) if u]
+    runware = Runware(api_key=api_key)
+    await runware.connect()
+    inference_kwargs = dict(
+        positivePrompt=prompt,
+        model=runware_model_air,
+        width=width,
+        height=height,
+        numberResults=num_images,
+        outputFormat="PNG",
+    )
+    if refs:
+        # Pass the source image(s) so reference-capable models can edit/condition.
+        inference_kwargs["referenceImages"] = refs
+    req = IImageInference(**inference_kwargs)
+    images = await runware.imageInference(requestImage=req)
+    urls = [img.imageURL for img in images if img.imageURL]
+    logger.info(f"✅ [Runware] {len(urls)} image(s) via {runware_model_air}")
+    return urls

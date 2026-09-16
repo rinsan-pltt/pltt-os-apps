@@ -1,0 +1,83 @@
+# Local Palette platform-dev stack.
+#
+# Runs the same container that `pltt dev --platform` uses, but as a
+# long-lived service so you can tail logs with `docker compose logs -f`
+# instead of bouncing through the hosted/live sandbox.
+#
+# Usage:
+#   docker compose -f docker-compose.platform.yml up
+#   docker compose -f docker-compose.platform.yml logs -f platform
+#
+# Plugin frontend → http://localhost:7321/apps/pltt-creative-video
+# Plugin backend  → http://localhost:8732/api/v1/plugins/pltt-creative-video
+#
+# The bundled image expects its own postgres+redis (separate from the
+# pgvector instance in docker-compose.yml, which the platform doesn't
+# manage). Run this file on its own.
+
+services:
+  platform:
+    image: ${PALETTE_DEV_IMAGE:-ghcr.io/palette-lab/platform-dev:latest}
+    container_name: pltt-creative-video-platform
+    ports:
+      - "${PALETTE_FRONTEND_PORT:-7321}:3000"
+      - "${PALETTE_BACKEND_PORT:-8732}:8000"
+    environment:
+      PALETTE_DEV_MODE: "1"
+      NEXT_PUBLIC_PALETTE_DEV_MODE: "1"
+      PALETTE_ACTIVE_PLUGIN: pltt-creative-video
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@postgres:5432/app"
+      REDIS_URL: "redis://redis:6379/0"
+      # JWT_SECRET is consumed by the Palette platform-dev container itself
+      # (for the OS's own session signing); the plugin doesn't generate or
+      # verify JWTs. A dev default keeps the parity stack runnable without an
+      # entry in `.env` — override only if you need stable cross-restart sessions.
+      JWT_SECRET: "${JWT_SECRET:-pltt-dev-local-only-not-secret}"
+      FRONTEND_URL: "http://localhost:${PALETTE_FRONTEND_PORT:-7321}"
+      BACKEND_BASE_URL: "http://localhost:${PALETTE_BACKEND_PORT:-8732}"
+      NEXT_PUBLIC_API_URL: "http://localhost:${PALETTE_BACKEND_PORT:-8732}"
+      STORAGE_BACKEND: "local"
+      LOCAL_STORAGE_DIR: "/srv/storage"
+      RAG_ENABLED: "false"
+      # Plugin secrets — sourced from .env so they aren't hard-coded here.
+      FAL_KEY: "${FAL_KEY:-}"
+      RUNWARE_KEY: "${RUNWARE_API_KEY:-}"
+      MIDJOURNEY_KEY: "${MIDJOURNEY_TT_API_KEY:-}"
+      OPENAI_KEY: "${OPENAI_API_KEY:-}"
+      GOOGLE_AI_API_KEY: "${GOOGLE_AI_API_KEY:-}"
+    volumes:
+      - ".:/plugins/pltt-creative-video"
+      - "platform_storage:/srv/storage"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: pltt-creative-video-platform-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    volumes:
+      - platform_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pltt-creative-video-platform-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  platform_pg_data:
+  platform_storage:

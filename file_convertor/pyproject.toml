@@ -1,0 +1,36 @@
+[project]
+name = "palette-plugin-file-convertor"
+version = "0.0.1"
+description = "File Convertor — convert, compress and organize documents (Palette plugin)"
+requires-python = ">=3.10"
+# palette-sdk is provided on PYTHONPATH by the Palette CLI (`pltt dev`,
+# `pltt test`) and by the platform runtime in hosted environments.
+dependencies = [
+    "fastapi>=0.115",
+    "sqlalchemy>=2.0",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "anyio>=4.0",
+    "cryptography>=42",
+    # PyMuPDF backs all PDF organize/security ops (merge, split, rotate,
+    # protect, unlock, organize). pypdf was dropped: it is not installed on the
+    # hosted platform, so those tools 424'd with "No module named 'pypdf'".
+    "pymupdf>=1.24",
+    # pdf2docx is intentionally NOT listed here: it depends on opencv-python,
+    # a large native wheel the hosted platform cannot install, and its failure
+    # can break the whole hosted dependency install. Local dev installs it via
+    # backend/requirements.txt; the code falls back to pymupdf + python-docx
+    # when it's absent (see api/core/convert_ops.py pdf_to_word).
+    "python-docx>=1.1",
+    "pdfplumber>=0.11",
+    "openpyxl>=3.1",
+    "python-pptx>=1.0",
+    "pillow>=10.0",
+    # Optional HEIC/HEIF decoder for the Image-to-Text tool. Registered lazily
+    # (try/except) so JPEG/PNG OCR still works if the host can't install it.
+    "pillow-heif>=0.16",
+    # Pure-Python read/write for the modern .hwpx (Hancom Office / 한글)
+    # container -- legacy binary .hwp is read-only, via LibreOffice's import
+    # filter (see api/core/hwpx_ops.py).
+    "python-hwpx>=6.0",
+]

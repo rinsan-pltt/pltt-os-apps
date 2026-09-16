@@ -1,0 +1,60 @@
+# Local datastore for `pltt dev`.
+# Values are substituted from .env (Compose reads it automatically).
+#
+#   docker compose up -d          # start Postgres
+#   docker compose ps             # check health
+#   docker compose down           # stop (keeps data)
+#   docker compose down -v        # stop and wipe the volume
+#
+# Redis is unused by the backend today, so it only starts with:
+#   docker compose --profile full up -d
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18}
+    container_name: corporate-card-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-palette_org_explorer_app}
+      POSTGRES_USER: ${POSTGRES_USER:-palette_org_explorer_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-palette_org_explorer_password}
+    ports:
+      # Host port must match the port in PALETTE_DEV_DATABASE_URL.
+      - "${POSTGRES_PORT:-55437}:5432"
+    volumes:
+      # Postgres 18+ wants the mount at /var/lib/postgresql (it places the
+      # cluster in a major-version subdirectory). Mounting .../data crash-loops.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-palette_org_explorer_app} -d ${POSTGRES_DB:-palette_org_explorer_app}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - app
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:8}
+    container_name: corporate-card-redis
+    restart: unless-stopped
+    profiles:
+      - full
+    ports:
+      - "${REDIS_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app
+
+volumes:
+  postgres-data:
+
+networks:
+  app:
+    name: ${DOCKER_NETWORK:-palette-org-explorer-app-network}

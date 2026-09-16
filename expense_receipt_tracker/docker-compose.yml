@@ -1,0 +1,26 @@
+# Postgres for the plugin's expense/receipt records, in the same format as
+# the reference plugin's compose file. Standalone dev (`npm run backend`,
+# `pltt test`) defaults to a local SQLite file instead so nothing here is
+# required just to run the app — point DATABASE_URL at this service when you
+# want Postgres locally too.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: expense-receipt-tracker-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: palette_user
+      POSTGRES_PASSWORD: palette_user_password
+      POSTGRES_DB: expense_receipt_tracker
+    ports:
+      - "5456:5432"
+    volumes:
+      - expense_receipt_tracker_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U palette_user -d expense_receipt_tracker"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  expense_receipt_tracker_pg_data:

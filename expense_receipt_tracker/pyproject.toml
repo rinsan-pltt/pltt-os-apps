@@ -1,0 +1,31 @@
+[project]
+name = "palette-plugin-expense-receipt-tracker"
+version = "0.0.1"
+description = "Expense & Receipt Tracker — scan receipts, categorize expenses, export reimbursement reports (Palette plugin)"
+requires-python = ">=3.10"
+# palette-sdk is provided on PYTHONPATH by the Palette CLI (`pltt dev`,
+# `pltt test`) and by the platform runtime in hosted environments.
+dependencies = [
+    "fastapi>=0.115",
+    "sqlalchemy>=2.0",
+    # Async DB stack. On the platform the request AsyncSession (ctx.db) runs on
+    # the SDK's async Postgres engine (asyncpg + greenlet, provided by the
+    # runtime). Standalone dev/tests use a local async SQLite engine, which
+    # needs aiosqlite; greenlet is SQLAlchemy's async bridge in both cases.
+    "greenlet>=3.0",
+    "aiosqlite>=0.20",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "anyio>=4.0",
+    "pymupdf>=1.24",
+    "pillow>=10.0",
+    "python-dateutil>=2.9",
+    "openpyxl>=3.1",
+    # pytesseract is intentionally optional at import time (see
+    # backend/api/core/ocr.py): it wraps the system `tesseract` binary, which
+    # isn't installable as a Python wheel and the hosted platform may not
+    # have it preinstalled. When it's missing, image receipts fall back to
+    # empty extracted fields and the user fills them in by hand; PDF
+    # receipts still extract text fine via pymupdf, no OCR needed.
+    "pytesseract>=0.3.10",
+]

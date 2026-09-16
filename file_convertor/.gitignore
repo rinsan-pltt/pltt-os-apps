@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+*.tsbuildinfo
+
+# Next.js build output. Never commit this: `next build` regenerates it, Palette
+# OS does not run it (the CLI builds its own bundle from frontend/app), and it
+# carries generated keys — a committed .next is what GitGuardian flagged as an
+# exposed "Generic Encryption Key" (server-reference-manifest.json's
+# `encryptionKey`, and .previewinfo's preview-mode keys).
+.next/
+
+# Palette CLI
+.palette/
+frontend/app/.tw.css
+
+# Env & OS
+.env
+.env.local
+.DS_Store

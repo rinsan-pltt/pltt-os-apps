@@ -1,0 +1,13 @@
+[project]
+name = "corporate-card-system"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.129.0",
+  "sqlalchemy>=2.0.47",
+  "alembic>=1.17.0",
+  "aiosqlite>=0.20.0",
+  "greenlet>=3.0.0",
+  "python-multipart>=0.0.20",
+  # `pltt test` ships the backend SDK on PYTHONPATH.
+]

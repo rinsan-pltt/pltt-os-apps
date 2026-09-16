@@ -1,0 +1,58 @@
+{
+  "employees": [
+    {
+      "member_id": "ceo",
+      "name": "Mina Park",
+      "email": "mina.park@example.com",
+      "title": "CEO",
+      "department": "Executive",
+      "role": "ceo",
+      "reports_to": null
+    },
+    {
+      "member_id": "finance-head",
+      "name": "Jun Seo",
+      "email": "jun.seo@example.com",
+      "title": "Finance Head",
+      "department": "Finance",
+      "role": "finance_head",
+      "reports_to": "ceo"
+    },
+    {
+      "member_id": "operations-head",
+      "name": "Sora Kim",
+      "email": "sora.kim@example.com",
+      "title": "Operations Department Head",
+      "department": "Operations",
+      "role": "department_head",
+      "reports_to": "ceo"
+    },
+    {
+      "member_id": "ops-manager",
+      "name": "Daniel Choi",
+      "email": "daniel.choi@example.com",
+      "title": "Operations Manager",
+      "department": "Operations",
+      "role": "manager",
+      "reports_to": "operations-head"
+    },
+    {
+      "member_id": "dev-user",
+      "name": "Palette Developer",
+      "email": "developer@palette.local",
+      "title": "Employee",
+      "department": "Operations",
+      "role": "employee",
+      "reports_to": "ops-manager"
+    },
+    {
+      "member_id": "direct-ceo-user",
+      "name": "Ari Han",
+      "email": "ari.han@example.com",
+      "title": "Strategic Programs Lead",
+      "department": "Strategy",
+      "role": "manager",
+      "reports_to": "ceo"
+    }
+  ]
+}

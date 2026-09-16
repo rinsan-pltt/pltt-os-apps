@@ -1,0 +1,74 @@
+# Local Palette platform-dev stack.
+#
+# Runs the same container that `pltt dev --platform` uses, but as a
+# long-lived service so you can tail logs with `docker compose logs -f`
+# instead of bouncing through the hosted/live sandbox.
+#
+# Usage:
+#   docker compose -f docker-compose.platform.yml up
+#   docker compose -f docker-compose.platform.yml logs -f platform
+#
+# Plugin frontend → http://localhost:7323/apps/expense-receipt-tracker
+# Plugin backend  → http://localhost:8734/api/v1/plugins/expense-receipt-tracker
+#
+# The bundled image expects its own postgres+redis. Run this file on its own.
+
+services:
+  platform:
+    image: ${PALETTE_DEV_IMAGE:-ghcr.io/palette-lab/platform-dev:latest}
+    container_name: expense-receipt-tracker-platform
+    ports:
+      - "${PALETTE_FRONTEND_PORT:-7323}:3000"
+      - "${PALETTE_BACKEND_PORT:-8734}:8000"
+    environment:
+      PALETTE_DEV_MODE: "1"
+      NEXT_PUBLIC_PALETTE_DEV_MODE: "1"
+      PALETTE_ACTIVE_PLUGIN: expense-receipt-tracker
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@postgres:5432/app"
+      REDIS_URL: "redis://redis:6379/0"
+      # JWT_SECRET is consumed by the Palette platform-dev container itself
+      # (for the OS's own session signing); the plugin doesn't generate or
+      # verify JWTs. A dev default keeps the stack runnable without an .env.
+      JWT_SECRET: "${JWT_SECRET:-expense-receipt-tracker-dev-local-only-not-secret}"
+      FRONTEND_URL: "http://localhost:${PALETTE_FRONTEND_PORT:-7323}"
+      BACKEND_BASE_URL: "http://localhost:${PALETTE_BACKEND_PORT:-8734}"
+      NEXT_PUBLIC_API_URL: "http://localhost:${PALETTE_BACKEND_PORT:-8734}"
+      STORAGE_BACKEND: "local"
+      LOCAL_STORAGE_DIR: "/srv/storage"
+      RAG_ENABLED: "false"
+    volumes:
+      - ".:/plugins/expense-receipt-tracker"
+      - "platform_storage:/srv/storage"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: expense-receipt-tracker-platform-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    volumes:
+      - platform_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: expense-receipt-tracker-platform-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  platform_pg_data:
+  platform_storage:

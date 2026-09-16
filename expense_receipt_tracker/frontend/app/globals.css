@@ -1,0 +1,679 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   "Ledger" design tokens.
+
+   The subject is paper receipts becoming rows of exact numbers, so the ground
+   is a warm paper white and the text is ink. The accent stays inside the
+   emerald→teal band of the launcher tile declared in palette-plugin.json
+   (linear-gradient(135deg, #059669, #0D9488)) so the app looks like its own
+   icon.
+
+   Every value below was picked against a measured contrast target, not by eye:
+     - body/ink on paper .............. 16.6:1
+     - muted foreground on card ....... 5.9:1   (AA text)
+     - --primary-foreground on --primary  4.97:1 (AA text; measured against the
+                                                 actual token, not pure white, which
+                                                 flatters it to 5.12. The old
+                                                 0.55/0.14 emerald was 4.39 and failed)
+     - --input boundary vs card ....... 3.4:1   (AA 1.4.11 non-text)
+     - semantic fg on its -subtle ..... 6.8-7.4:1
+
+   Rule of the system: COLOUR CARRIES DATA, CHROME STAYS NEUTRAL. Status and
+   category colours mean something; the accent is reserved for the primary
+   action, focus, and the balance meter.
+--------------------------------------------------------------------------- */
+
+/* Both palettes are keyed off an attribute the plugin puts on its OWN root,
+   not off a class the host controls.
+   
+   The platform scopes this stylesheet at publish time, rewriting every selector
+   against the plugin root, so a host class is unreachable: `.dark` becomes
+   `[data-palette-plugin-root="..."] .dark` and the host's own `.dark` sits
+   ABOVE that root, never inside it. Keying off `[data-erx-root][data-erx-theme]`
+   scopes cleanly instead — the attributes are on an element the plugin renders,
+   which is a descendant of the scope root in both environments.
+   
+   `.dark` is kept alongside for `pltt dev`, where the CSS is injected unscoped
+   and the simulator's class on <html> does match.
+   
+   `color-scheme` is declared because native controls — select popups,
+   checkboxes, scrollbars — follow the UA's colour scheme, not our variables,
+   and would otherwise stay light inside the dark theme. */
+:root {
+  /* Theme-INDEPENDENT tokens: geometry, typography, motion.
+  
+     These must live on a bare `:root` and nowhere else. The responsive
+     overrides further down are `@media (...) { :root { ... } }`, and the
+     theme blocks below are selected by an ATTRIBUTE — which outranks a bare
+     `:root`. Declaring spacing in a theme block therefore pinned it to the base
+     value in that theme and let the media queries win in the other, so
+     switching light/dark visibly changed every gutter and card padding. */
+  /* Geometry, not colour. One lever: every `rounded-*` utility compiles to a
+     calc() against this var, so re-proportioning the scale below moves all ~78
+     radius literals in the app together. That matters because several surfaces
+     are assembled from separate pieces whose corners must meet — the status
+     page's table + sticky footer, ExpenseTable + BulkActionBar — and they stay
+     aligned for free instead of by hand. */
+  --erx-radius: 0.75rem;
+
+  /* Typography ------------------------------------------------------------
+     The app previously declared no font-family at all, so it inherited
+     whatever sans the host happened to set. This is an explicit stack rather
+     than a webfont: the plugin renders sandboxed, has no public/ directory to
+     serve from, and the manifest's external_network allowance covers the
+     backend only — a Google Fonts link could be blocked by a host CSP and fail
+     silently. The Korean faces are listed so `ko` gets a deliberate face too
+     instead of falling through to a serif.                                */
+  --erx-font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR",
+    "Noto Sans", sans-serif;
+  /* Amounts are the content of this product. Tabular figures keep columns
+     aligned; slashed zero stops 0/O ambiguity on a receipt total. */
+  --erx-numeric-features: tabular-nums slashed-zero;
+
+  /* Spacing rhythm --------------------------------------------------------
+     Vertical space is chosen by the RELATIONSHIP between two elements, not by
+     eye: different topics -> section, blocks within a topic -> block, sibling
+     controls -> field, parts of one control -> inline. Horizontal padding is
+     set once per level: page = gutter, surface = surface. A component may not
+     invent a value; if none of these fits, the rhythm is wrong.            */
+  /* Two fixed-size figures that otherwise ignore viewport height entirely:
+     the calendar's day cell (x7 rows, so it dominates its card) and the donut.
+     Tokenised so the height steps below can reclaim that space instead of the
+     page giving up and scrolling. */
+  --erx-cal-cell: 2.5rem;
+  --erx-donut-size: 9rem;
+
+  --erx-pad-gutter: 1rem;
+  --erx-pad-page-y: 2rem;
+  --erx-pad-surface: 1.25rem;
+  --erx-gap-section: 2rem;
+  --erx-gap-block: 1rem;
+  --erx-gap-field: 0.75rem;
+  --erx-gap-inline: 0.5rem;
+
+  /* Motion ----------------------------------------------------------------
+     These are consumed by components via duration-[var(--erx-dur-fast)] /
+     ease-[var(--erx-ease-out)]. Previously the equivalents existed here and were
+     referenced by nothing — every component hardcoded its own timing.      */
+  --erx-ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --erx-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --erx-dur-instant: 90ms;
+  --erx-dur-fast: 140ms;
+  --erx-dur: 200ms;
+  --erx-dur-slow: 320ms;
+}
+
+/* Theme-DEPENDENT tokens only: colours, shadows, colour-scheme. Safe to raise
+   the specificity here because nothing overrides these by media query. */
+:root,
+[data-erx-root][data-erx-theme="light"] {
+  color-scheme: light;
+  /* Surfaces ------------------------------------------------------------- */
+  --erx-background: oklch(0.985 0.004 95);
+  --erx-foreground: oklch(0.22 0.012 255);
+  --erx-card: oklch(1 0 0);
+  --erx-card-foreground: oklch(0.22 0.012 255);
+  /* Inset areas: table headers, sunken panels, the ledger's header row. */
+  --erx-surface-sunken: oklch(0.965 0.005 95);
+
+  /* Accent --------------------------------------------------------------- */
+  --erx-primary: oklch(0.52 0.115 168);
+  --erx-primary-foreground: oklch(0.99 0 0);
+  --erx-primary-hover: oklch(0.46 0.115 168);
+  /* The launcher-tile gradient. Non-text use only — its own colours give
+     white just ~3.75:1, so it fills the meter and never sits behind copy. */
+  --erx-brand-gradient: linear-gradient(135deg, #059669, #0d9488);
+
+  --erx-secondary: oklch(0.955 0.006 220);
+  --erx-secondary-foreground: oklch(0.28 0.015 255);
+  --erx-muted: oklch(0.962 0.004 95);
+  --erx-muted-foreground: oklch(0.505 0.014 255);
+  --erx-accent: oklch(0.955 0.014 170);
+  --erx-accent-foreground: oklch(0.28 0.02 170);
+
+  /* Semantics ------------------------------------------------------------ */
+  --erx-destructive: oklch(0.55 0.2 25);
+  --erx-destructive-foreground: oklch(0.99 0 0);
+  --erx-destructive-subtle: oklch(0.955 0.03 25);
+  /* Error *text*. --destructive is tuned as a fill (white on it is 5.23:1) and
+     is only 3.84:1 as text on a dark card — a real AA failure. This is the text
+     colour: 5.38 on light card, 6.28 on dark. Icons keep --destructive; at
+     3.17:1 they clear the 3:1 non-text bar. */
+  --erx-destructive-text: oklch(0.55 0.2 25);
+  --erx-success: oklch(0.42 0.12 160);
+  --erx-success-foreground: oklch(0.99 0 0);
+  --erx-success-subtle: oklch(0.95 0.035 160);
+  --erx-warning: oklch(0.42 0.12 70);
+  --erx-warning-foreground: oklch(0.99 0 0);
+  --erx-warning-subtle: oklch(0.95 0.035 70);
+  --erx-info: oklch(0.42 0.12 250);
+  --erx-info-foreground: oklch(0.99 0 0);
+  --erx-info-subtle: oklch(0.95 0.035 250);
+
+  /* Lines ---------------------------------------------------------------- */
+  /* --border is for decorative dividers; --input is the boundary of an actual
+     control and therefore has to clear 3:1 on its own (WCAG 1.4.11). */
+  --erx-border: oklch(0.9 0.005 255);
+  /* A surface's OUTER edge. --card sits only 1.04:1 above --background, so the
+     border is the only thing that says "this is a card" — --border alone
+     (1.35:1) is too faint to carry that. Still below --input, because this is
+     structure, not a control boundary. */
+  --erx-border-strong: oklch(0.86 0.006 255);
+  --erx-input: oklch(0.64 0.008 255);
+  --erx-ring: oklch(0.52 0.115 168);
+  --erx-ring-offset: oklch(0.985 0.004 95);
+
+  /* Elevation ------------------------------------------------------------ */
+  --erx-shadow-sm: 0 1px 2px oklch(0.22 0.012 255 / 0.06);
+  --erx-shadow: 0 1px 3px oklch(0.22 0.012 255 / 0.08), 0 4px 12px oklch(0.22 0.012 255 / 0.05);
+  --erx-shadow-lg: 0 8px 32px oklch(0.22 0.012 255 / 0.14);
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --erx-pad-gutter: 1.5rem;
+    --erx-pad-page-y: 2.5rem;
+    --erx-pad-surface: 1.5rem;
+    --erx-gap-section: 2.5rem;
+    --erx-gap-block: 1.25rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --erx-pad-gutter: 2rem;
+    --erx-gap-section: 3rem;
+    /* Cards get one more step of breathing room only where there is width to
+       spare. Base and sm stay put so phones don't lose content to padding. */
+    --erx-pad-surface: 1.75rem;
+  }
+}
+
+/* Vertical rhythm answers to viewport HEIGHT too, not just width.
+   The spacing scale above is tuned for a tall window; on a short one the same
+   values are what push a fixed-composition page like the dashboard past the
+   fold, so it scrolls when it could simply have fitted. These two steps tighten
+   the vertical rhythm as height runs out — the horizontal values are left alone,
+   because width is a separate constraint and already handled above.
+
+   Below the second step the layout has given back all it can and the working
+   area scrolls, which is the correct outcome rather than squeezing type. */
+/* The other direction: on a tall display the donut was pinned at 9rem and read
+   as a small badge in a large card. The centre label is inside the <svg> now,
+   so it scales with this and needs no matching rule of its own. */
+@media (min-height: 64rem) {
+  :root {
+    --erx-donut-size: 11rem;
+  }
+}
+
+@media (max-height: 60rem) {
+  :root {
+    --erx-pad-page-y: 1.5rem;
+    --erx-gap-section: 1.5rem;
+    --erx-gap-block: 0.875rem;
+    --erx-pad-surface: 1.25rem;
+    --erx-cal-cell: 2.25rem;
+    --erx-donut-size: 8rem;
+  }
+}
+
+@media (max-height: 54rem) {
+  :root {
+    --erx-pad-page-y: 1rem;
+    --erx-gap-section: 1rem;
+    --erx-gap-block: 0.75rem;
+    --erx-pad-surface: 1rem;
+    /* 1.875rem = 30px. Still comfortably above the 24px minimum target size,
+       and these cells are not interactive — the day's detail is in its
+       aria-label and title, not a click. */
+    --erx-cal-cell: 1.875rem;
+    --erx-donut-size: 6.5rem;
+  }
+}
+
+/* Both selectors, because the platform SCOPES this stylesheet before injecting
+   it. `@palettelab/cli`'s css-scope rewrites every rule against the plugin's
+   root element, and it treats the two forms differently:
+
+     .dark       ->  [data-palette-plugin-root="..."] .dark    (a DESCENDANT)
+     html.dark   ->  [data-palette-plugin-root="..."].dark     (the root ITSELF)
+
+   With only `.dark`, the host's own `.dark` on <html> is an ANCESTOR of the
+   plugin root and therefore can never match the scoped rule — which is why the
+   plugin rendered its light palette inside a dark host on the platform while
+   looking correct under `pltt dev`, where the CSS is injected unscoped.
+
+   Declaring both covers either shape: the class works whether it lands on the
+   scope root or on an element inside it. The runtime puts it on the plugin's
+   own root (see useColorMode) precisely because the host's class cannot reach
+   this rule. */
+.dark,
+[data-erx-root][data-erx-theme="dark"] {
+  color-scheme: dark;
+  --erx-background: oklch(0.16 0.012 255);
+  --erx-foreground: oklch(0.95 0.005 250);
+  --erx-card: oklch(0.2 0.012 255);
+  --erx-card-foreground: oklch(0.95 0.005 250);
+  --erx-surface-sunken: oklch(0.235 0.012 255);
+
+  /* On a dark ground the accent has to be light, so its text flips to ink:
+     white on this green is only 3.31:1, ink on it is 6.40:1. */
+  --erx-primary: oklch(0.66 0.13 168);
+  --erx-primary-foreground: oklch(0.18 0.02 165);
+  --erx-primary-hover: oklch(0.72 0.13 168);
+  --erx-brand-gradient: linear-gradient(135deg, #10b981, #14b8a6);
+
+  --erx-secondary: oklch(0.26 0.012 255);
+  --erx-secondary-foreground: oklch(0.95 0.005 250);
+  --erx-muted: oklch(0.26 0.012 255);
+  --erx-muted-foreground: oklch(0.7 0.012 255);
+  --erx-accent: oklch(0.29 0.02 170);
+  --erx-accent-foreground: oklch(0.95 0.005 250);
+
+  --erx-destructive: oklch(0.58 0.19 25);
+  --erx-destructive-foreground: oklch(0.99 0 0);
+  --erx-destructive-subtle: oklch(0.28 0.06 25);
+  --erx-destructive-text: oklch(0.7 0.17 25);
+  --erx-success: oklch(0.72 0.14 160);
+  --erx-success-foreground: oklch(0.18 0.02 160);
+  --erx-success-subtle: oklch(0.28 0.05 160);
+  --erx-warning: oklch(0.78 0.13 75);
+  --erx-warning-foreground: oklch(0.2 0.03 75);
+  --erx-warning-subtle: oklch(0.3 0.05 70);
+  --erx-info: oklch(0.7 0.12 250);
+  --erx-info-foreground: oklch(0.18 0.02 250);
+  --erx-info-subtle: oklch(0.28 0.05 250);
+
+  /* Dividers and control boundaries need real lightness above the card
+     (L=0.20) and background (L=0.16) to read at all in dark mode. */
+  --erx-border: oklch(0.5 0.015 255);
+  --erx-border-strong: oklch(0.54 0.015 255);
+  --erx-input: oklch(0.55 0.015 255);
+  --erx-ring: oklch(0.66 0.13 168);
+  --erx-ring-offset: oklch(0.16 0.012 255);
+
+  --erx-shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
+  --erx-shadow: 0 1px 3px oklch(0 0 0 / 0.5), 0 4px 12px oklch(0 0 0 / 0.35);
+  --erx-shadow-lg: 0 8px 32px oklch(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --font-sans: var(--erx-font-sans);
+
+  /* A real type scale, as utilities. Eight semantic steps with line-height,
+     tracking and weight baked in, replacing the ad-hoc mix of text-xs/sm that
+     made up 90% of the old app's type. */
+  --text-display: 3rem;
+  --text-display--line-height: 1.04;
+  --text-display--letter-spacing: -0.025em;
+  --text-display--font-weight: 600;
+
+  /* The page's own <h1>. --text-title (1.75rem) is spoken for elsewhere (the
+     donut's centre figure), and a page heading that competes with a stat figure
+     flattens the hierarchy — so the header gets its own step above it. */
+  --text-page: 2rem;
+  --text-page--line-height: 1.1;
+  --text-page--letter-spacing: -0.022em;
+  --text-page--font-weight: 600;
+
+  --text-figure-sm: 1.375rem;
+  --text-figure-sm--line-height: 1.75rem;
+  --text-figure-sm--letter-spacing: -0.018em;
+  --text-figure-sm--font-weight: 600;
+
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 600;
+
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.3;
+  --text-heading--letter-spacing: -0.011em;
+  --text-heading--font-weight: 600;
+
+  --text-subheading: 1rem;
+  --text-subheading--line-height: 1.4;
+  --text-subheading--letter-spacing: -0.008em;
+  --text-subheading--font-weight: 600;
+
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.55;
+
+  --text-body-lg: 1rem;
+  --text-body-lg--line-height: 1.5rem;
+  --text-body-lg--letter-spacing: -0.006em;
+
+  --text-ui: 0.875rem;
+  --text-ui--line-height: 1.4;
+
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.45;
+
+  --text-overline: 0.75rem;
+  --text-overline--line-height: 1rem;
+  --text-overline--letter-spacing: 0.06em;
+  --text-overline--font-weight: 600;
+
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.4;
+  --text-micro--letter-spacing: 0.045em;
+  --text-micro--font-weight: 500;
+
+  --ease-out: var(--erx-ease-out);
+  --ease-in-out: var(--erx-ease-in-out);
+
+  --color-background: var(--erx-background);
+  --color-foreground: var(--erx-foreground);
+  --color-card: var(--erx-card);
+  --color-card-foreground: var(--erx-card-foreground);
+  --color-surface-sunken: var(--erx-surface-sunken);
+  --color-primary: var(--erx-primary);
+  --color-primary-foreground: var(--erx-primary-foreground);
+  --color-primary-hover: var(--erx-primary-hover);
+  --color-secondary: var(--erx-secondary);
+  --color-secondary-foreground: var(--erx-secondary-foreground);
+  --color-muted: var(--erx-muted);
+  --color-muted-foreground: var(--erx-muted-foreground);
+  --color-accent: var(--erx-accent);
+  --color-accent-foreground: var(--erx-accent-foreground);
+  --color-destructive: var(--erx-destructive);
+  --color-destructive-foreground: var(--erx-destructive-foreground);
+  --color-destructive-subtle: var(--erx-destructive-subtle);
+  --color-destructive-text: var(--erx-destructive-text);
+  --color-success: var(--erx-success);
+  --color-success-foreground: var(--erx-success-foreground);
+  --color-success-subtle: var(--erx-success-subtle);
+  --color-warning: var(--erx-warning);
+  --color-warning-foreground: var(--erx-warning-foreground);
+  --color-warning-subtle: var(--erx-warning-subtle);
+  --color-info: var(--erx-info);
+  --color-info-foreground: var(--erx-info-foreground);
+  --color-info-subtle: var(--erx-info-subtle);
+  --spacing-gutter: var(--erx-pad-gutter);
+  --spacing-surface: var(--erx-pad-surface);
+  --spacing-section: var(--erx-gap-section);
+  --spacing-block: var(--erx-gap-block);
+  --spacing-field: var(--erx-gap-field);
+  --spacing-inline: var(--erx-gap-inline);
+  --spacing-page-y: var(--erx-pad-page-y);
+
+  --color-border: var(--erx-border);
+  --color-border-strong: var(--erx-border-strong);
+  --color-input: var(--erx-input);
+  --color-ring: var(--erx-ring);
+  /* The vocabulary the app already spoke, now stated explicitly:
+     sm/md = chips and small targets, lg = controls, xl = surfaces,
+     2xl = dialogs and the featured card, full = pills. Don't reach for
+     `rounded-3xl` — that's Tailwind's fixed 1.5rem default and would fall off
+     this lever. */
+  --radius-sm: calc(var(--erx-radius) - 6px);
+  --radius-md: calc(var(--erx-radius) - 4px);
+  --radius-lg: var(--erx-radius);
+  --radius-xl: calc(var(--erx-radius) + 8px);
+  --radius-2xl: calc(var(--erx-radius) + 16px);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--erx-font-sans);
+  font-size: var(--text-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Every amount in the product. `tabular-nums` alone does not force lining
+   figures, and --font-sans resolves to whatever the host provides — so ask for
+   both explicitly. */
+@utility numeral {
+  font-variant-numeric: var(--erx-numeric-features);
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* Fixed row height keeps the virtualiser's arithmetic exact. Rows are
+   otherwise bimodal — one with notes renders a second line and is ~16px
+   taller, which would make the spacer padding (and so the scrollbar) drift.
+   The cells clip because their content is already truncated. */
+.ledger-body {
+  --row-h: 84px;
+}
+
+@media (min-width: 40rem) {
+  .ledger-body {
+    --row-h: 53px;
+  }
+}
+
+.ledger-body > tr {
+  height: var(--row-h);
+}
+
+.ledger-body > tr > th,
+.ledger-body > tr > td {
+  overflow: hidden;
+}
+
+/* Spacer rows must not inherit the fixed height — their height IS the point. */
+.ledger-body > tr[aria-hidden="true"] {
+  height: auto;
+}
+
+/* Tailwind's ring-offset colour defaults to white, which halos on a dark
+   card. Bind it to the theme once, globally. */
+* {
+  --tw-ring-offset-color: var(--erx-ring-offset);
+}
+
+/* ---------------------------------------------------------------------------
+   Signature: the receipt edge.
+
+   A scalloped bottom edge cut with a tiled radial mask — no image, no extra
+   element. Used in exactly one place, the balance panel: the mask needs a
+   solid fill behind it to read as torn paper, and one confident instance beats
+   several weak ones.
+--------------------------------------------------------------------------- */
+.receipt-edge {
+  --tooth-w: 20px;
+  --tooth-h: 10px;
+  -webkit-mask:
+    radial-gradient(var(--tooth-h) at 50% 0, #0000 98%, #000 100%) 50% 100% / var(--tooth-w)
+      var(--tooth-h) repeat-x,
+    linear-gradient(#000 0 0) 0 0 / 100% calc(100% - var(--tooth-h)) no-repeat;
+  mask:
+    radial-gradient(var(--tooth-h) at 50% 0, #0000 98%, #000 100%) 50% 100% / var(--tooth-w)
+      var(--tooth-h) repeat-x,
+    linear-gradient(#000 0 0) 0 0 / 100% calc(100% - var(--tooth-h)) no-repeat;
+}
+
+/* Receipt image preview inside the scan workspace and expense detail dialog. */
+.receipt-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-lg);
+}
+
+/* ---------------------------------------------------------------------------
+   Checkbox. The native control renders ~13px, well under the 24px minimum
+   target of WCAG 2.5.8, and cannot be themed. This is a real control with a
+   visible focus ring and a 24px hit area that stays visually 20px.
+--------------------------------------------------------------------------- */
+.ck {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  /* A real 24px box. An ::after inset trick renders but does NOT extend the
+     control's hit-testing area (verified with elementFromPoint), so the box
+     itself has to meet the 24px minimum target size. */
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  margin: 0;
+  border: 1.5px solid var(--erx-input);
+  border-radius: 0.375rem;
+  background: var(--erx-card);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition:
+    background-color var(--erx-dur-fast) var(--erx-ease-out),
+    border-color var(--erx-dur-fast) var(--erx-ease-out);
+}
+
+.ck::before {
+  content: "";
+  width: 0.85rem;
+  height: 0.85rem;
+  transform: scale(0);
+  transition: transform var(--erx-dur-fast) var(--erx-ease-out);
+  background: var(--erx-primary-foreground);
+  clip-path: polygon(14% 44%, 0 60%, 39% 100%, 100% 22%, 84% 6%, 39% 68%);
+}
+
+.ck:checked,
+.ck:indeterminate {
+  background: var(--erx-primary);
+  border-color: var(--erx-primary);
+}
+
+.ck:checked::before {
+  transform: scale(1);
+}
+
+.ck:indeterminate::before {
+  transform: scale(1);
+  clip-path: polygon(8% 40%, 92% 40%, 92% 60%, 8% 60%);
+}
+
+.ck:focus-visible {
+  outline: 2px solid var(--erx-ring);
+  outline-offset: 2px;
+}
+
+.ck:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---------------------------------------------------------------------------
+   Dialog / bottom sheet.
+
+   Exits are driven by `animationend`, never a hardcoded timeout: the
+   reduced-motion block below collapses the duration to ~0, and animationend
+   still fires, so the state machine stays correct for everyone. A fixed 300ms
+   timer would strand reduced-motion users in front of a dead dialog.
+--------------------------------------------------------------------------- */
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.97);
+  }
+}
+
+@keyframes panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(0.25rem) scale(0.985);
+  }
+}
+
+.dialog-backdrop[data-phase="open"] {
+  animation: backdrop-in var(--erx-dur) var(--erx-ease-out) both;
+}
+
+.dialog-backdrop[data-phase="closing"] {
+  animation: backdrop-out var(--erx-dur-fast) var(--erx-ease-in-out) both;
+}
+
+.dialog-panel[data-phase="open"] {
+  animation: sheet-in var(--erx-dur-slow) var(--erx-ease-out) both;
+}
+
+.dialog-panel[data-phase="closing"] {
+  animation: sheet-out var(--erx-dur-fast) var(--erx-ease-in-out) both;
+}
+
+@media (min-width: 40rem) {
+  .dialog-panel[data-phase="open"] {
+    animation: panel-in var(--erx-dur) var(--erx-ease-out) both;
+  }
+
+  .dialog-panel[data-phase="closing"] {
+    animation: panel-out var(--erx-dur-fast) var(--erx-ease-in-out) both;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Loading placeholders. Layout-preserving, so nothing jumps on arrival.
+--------------------------------------------------------------------------- */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton {
+  background: var(--erx-muted);
+  border-radius: var(--radius-md);
+  animation: skeleton-pulse 1.6s var(--erx-ease-out) infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Respect the OS setting. Motion here is decorative in every case, so it can
+   be dropped wholesale rather than tuned.
+--------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* Blanket-disabling every transition was fine when all motion was
+       decorative. Now that motion carries meaning (a row leaving, a sheet
+       arriving), kill only what actually causes discomfort — movement and
+       scaling — and keep a short opacity/colour fade so state changes are
+       still perceivable rather than instantaneous pops. */
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-property: opacity, color, background-color, border-color, box-shadow,
+      fill, stroke !important;
+    transition-duration: 120ms !important;
+    scroll-behavior: auto !important;
+  }
+}

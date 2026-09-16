@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: pltt-creative-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: palette_user
+      POSTGRES_PASSWORD: palette_user_password
+      POSTGRES_DB: pltt_creative
+    ports:
+      - "5454:5432"
+    volumes:
+      - pltt_creative_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U palette_user -d pltt_creative"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pltt_creative_pg_data:

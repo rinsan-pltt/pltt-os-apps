@@ -1,0 +1,22 @@
+.palette/
+.env
+.env.local
+.env.production
+node_modules
+.env.*.local
+.palette/dev/
+.palette/dev-storage/
+.palette/last-publish.json
+*.sqlite
+*.sqlite3
+*.db
+__pycache__/
+*.py[cod]
+frontend/tsconfig.tsbuildinfo
+dist/
+.DS_Store
+# Service-account / API credentials — never commit
+credentials.json
+# Per-machine Claude Code permission settings
+**/.claude/settings.local.json
+.claude/scheduled_tasks.lock

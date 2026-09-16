@@ -1,0 +1,33 @@
+{
+  "name": "palette-plugin-pltt-creative",
+  "version": "1.2.13",
+  "private": true,
+  "description": "Creative Image — multi-provider AI image generation Palette plugin",
+  "scripts": {
+    "build:css": "node frontend/build-css.mjs"
+  },
+  "dependencies": {
+    "@palettelab/cli": "^0.3.63",
+    "@palettelab/sdk": "^0.1.31",
+    "@radix-ui/react-icons": "^1.3.2",
+    "@tabler/icons-react": "^3.44.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.16.0",
+    "radix-ui": "^1.4.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5.0.0"
+  }
+}

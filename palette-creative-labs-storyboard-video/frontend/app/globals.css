@@ -1,0 +1,436 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* The pltt-agg build pulled D-DIN from `/fonts/*.woff2` under the Next public
+   directory. The Palette plugin sandbox cannot serve standalone public assets
+   the same way, so the @font-face declarations are intentionally omitted —
+   the font-mono / font-sans CSS variables below pick up the host fallback. */
+
+
+
+:root {
+  /* Light mode — primary: black, neutrals for secondary/muted.
+     All custom properties are namespaced with the `pltt` prefix so they
+     don't collide with host-OS / parent-frame tokens of the same name. */
+  --plttbackground: oklch(1.0000 0 0);
+  --plttforeground: oklch(0.12 0 0);
+  --plttcard: oklch(1.0000 0 0);
+  --plttcard-foreground: oklch(0.12 0 0);
+  --plttpopover: oklch(1.0000 0 0);
+  --plttpopover-foreground: oklch(0.12 0 0);
+  --plttprimary: oklch(0 0 0);
+  --plttprimary-foreground: oklch(1 0 0);
+  --plttsecondary: oklch(0.94 0 0);
+  --plttsecondary-foreground: oklch(0.15 0 0);
+  --plttmuted: oklch(0.96 0 0);
+  --plttmuted-foreground: oklch(0.50 0 0);
+  --plttaccent: oklch(0.94 0 0);
+  --plttaccent-foreground: oklch(0.15 0 0);
+  --plttdestructive: oklch(0.5954 0.2344 23.9586);
+  --plttdestructive-foreground: oklch(1.0000 0 0);
+  --plttborder: oklch(0.88 0 0);
+  /* Translucent border tokens. A literal oklch alpha (not Tailwind's
+     `border-border/NN` color-mix) so they render on the Palette OS webview,
+     while still following the theme. Consumed via `.border-borderNN`. */
+  --plttborder-40: oklch(0.88 0 0 / 0.4);
+  --plttborder-50: oklch(0.88 0 0 / 0.5);
+  --plttborder-60: oklch(0.88 0 0 / 0.6);
+  /* Mode-tab divider: a bit darker than the border grey in light mode. */
+  --plttdivider: oklch(0.8 0 0);
+  --plttinput: oklch(0.92 0 0);
+  --plttring: oklch(0.70 0 0);
+  --plttchart-1: oklch(0.9667 0.0148 251.1556);
+  --plttchart-2: oklch(0.7422 0.1166 260.2000);
+  --plttchart-3: oklch(0.6588 0.1585 264.3926);
+  --plttchart-4: oklch(0.5814 0.1857 265.2966);
+  --plttchart-5: oklch(0.4861 0.2073 266.0672);
+  --plttsidebar: oklch(1.0000 0 0);
+  --plttsidebar-foreground: oklch(0.12 0 0);
+  --plttsidebar-primary: oklch(0 0 0);
+  --plttsidebar-primary-foreground: oklch(1 0 0);
+  --plttsidebar-accent: oklch(0.94 0 0);
+  --plttsidebar-accent-foreground: oklch(0.15 0 0);
+  --plttsidebar-border: oklch(0.88 0 0);
+  --plttsidebar-ring: oklch(0.70 0 0);
+  --plttradius: 0rem;
+  --plttshadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --plttshadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --plttshadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --plttshadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --plttshadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --plttshadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --plttshadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --plttshadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+}
+
+.dark {
+  /* Dark mode — primary: white, neutrals for secondary/muted */
+  --plttbackground: oklch(0 0 0);
+  --plttforeground: oklch(0.96 0 0);
+  --plttcard: oklch(0 0 0);
+  --plttcard-foreground: oklch(0.96 0 0);
+  --plttpopover: oklch(0 0 0);
+  --plttpopover-foreground: oklch(0.96 0 0);
+  --plttprimary: oklch(1 0 0);
+  --plttprimary-foreground: oklch(0 0 0);
+  --plttsecondary: oklch(0.18 0 0);
+  --plttsecondary-foreground: oklch(0.88 0 0);
+  --plttmuted: oklch(0.16 0 0);
+  --plttmuted-foreground: oklch(0.55 0 0);
+  --plttaccent: oklch(0.18 0 0);
+  --plttaccent-foreground: oklch(0.88 0 0);
+  --plttdestructive: oklch(0.5954 0.2344 23.9586);
+  --plttdestructive-foreground: oklch(1.0000 0 0);
+  --plttborder: oklch(0.25 0 0);
+  --plttborder-40: oklch(0.25 0 0 / 0.4);
+  --plttborder-50: oklch(0.25 0 0 / 0.5);
+  --plttborder-60: oklch(0.25 0 0 / 0.6);
+  /* Mode-tab divider: the tab text's grey so it reads clearly on the pill. */
+  --plttdivider: var(--plttmuted-foreground);
+  --plttinput: oklch(0.18 0 0);
+  --plttring: oklch(0.40 0 0);
+  --plttchart-1: oklch(0.7152 0.1485 58.8324);
+  --plttchart-2: oklch(0.8299 0.1718 107.4066);
+  --plttchart-3: oklch(0.5798 0.1829 259.5141);
+  --plttchart-4: oklch(0.4962 0.2332 288.0574);
+  --plttchart-5: oklch(0.6152 0.1657 26.9800);
+  --plttsidebar: oklch(0 0 0);
+  --plttsidebar-foreground: oklch(0.96 0 0);
+  --plttsidebar-primary: oklch(1 0 0);
+  --plttsidebar-primary-foreground: oklch(0 0 0);
+  --plttsidebar-accent: oklch(0.18 0 0);
+  --plttsidebar-accent-foreground: oklch(0.88 0 0);
+  --plttsidebar-border: oklch(0.22 0 0);
+  --plttsidebar-ring: oklch(0.40 0 0);
+  --plttshadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.20);
+  --plttshadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.20);
+  --plttshadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --plttshadow: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --plttshadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 2px 4px -1px hsl(0 0% 0% / 0.30);
+  --plttshadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 4px 6px -1px hsl(0 0% 0% / 0.30);
+  --plttshadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 8px 10px -1px hsl(0 0% 0% / 0.30);
+  --plttshadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.50);
+}
+
+@theme inline {
+  --color-background: var(--plttbackground);
+  --color-foreground: var(--plttforeground);
+  --color-card: var(--plttcard);
+  --color-card-foreground: var(--plttcard-foreground);
+  --color-popover: var(--plttpopover);
+  --color-popover-foreground: var(--plttpopover-foreground);
+  --color-primary: var(--plttprimary);
+  --color-primary-foreground: var(--plttprimary-foreground);
+  --color-secondary: var(--plttsecondary);
+  --color-secondary-foreground: var(--plttsecondary-foreground);
+  --color-muted: var(--plttmuted);
+  --color-muted-foreground: var(--plttmuted-foreground);
+  --color-accent: var(--plttaccent);
+  --color-accent-foreground: var(--plttaccent-foreground);
+  --color-destructive: var(--plttdestructive);
+  --color-destructive-foreground: var(--plttdestructive-foreground);
+  --color-border: var(--plttborder);
+  --color-input: var(--plttinput);
+  --color-ring: var(--plttring);
+  --color-chart-1: var(--plttchart-1);
+  --color-chart-2: var(--plttchart-2);
+  --color-chart-3: var(--plttchart-3);
+  --color-chart-4: var(--plttchart-4);
+  --color-chart-5: var(--plttchart-5);
+  --color-sidebar: var(--plttsidebar);
+  --color-sidebar-foreground: var(--plttsidebar-foreground);
+  --color-sidebar-primary: var(--plttsidebar-primary);
+  --color-sidebar-primary-foreground: var(--plttsidebar-primary-foreground);
+  --color-sidebar-accent: var(--plttsidebar-accent);
+  --color-sidebar-accent-foreground: var(--plttsidebar-accent-foreground);
+  --color-sidebar-border: var(--plttsidebar-border);
+  --color-sidebar-ring: var(--plttsidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--plttradius) - 4px);
+  --radius-md: calc(var(--plttradius) - 2px);
+  --radius-lg: var(--plttradius);
+  --radius-xl: calc(var(--plttradius) + 4px);
+
+  --shadow-2xs: var(--plttshadow-2xs);
+  --shadow-xs: var(--plttshadow-xs);
+  --shadow-sm: var(--plttshadow-sm);
+  --shadow: var(--plttshadow);
+  --shadow-md: var(--plttshadow-md);
+  --shadow-lg: var(--plttshadow-lg);
+  --shadow-xl: var(--plttshadow-xl);
+  --shadow-2xl: var(--plttshadow-2xl);
+
+  --animate-bar-loader: bar-loader 1.6s ease-in-out infinite;
+
+  @keyframes bar-loader {
+    0%   { transform: translateX(-100%); width: 30%; }
+    50%  { width: 40%; }
+    100% { transform: translateX(350%); width: 30%; }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-mono;
+  }
+  /* Fit the host-provided container (the OS window/tab or the standalone
+     browser viewport), never the whole display. The app root uses
+     `height: 100%`, so the html/body chain must be 100% for it to resolve to
+     the container instead of collapsing to content height (which previously
+     left only the `min-height: 100vh` display-sized fallback and overflowed
+     the OS window). */
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Translucent border utilities, replacing Tailwind's `border-border/NN`.
+   Unlayered (their class specificity outranks the host shell's unlayered
+   `* { border-color }` reset), and the oklch-alpha tokens avoid the
+   `color-mix` the OS webview failed to apply. */
+.border-border40 { border-color: var(--plttborder-40); }
+.border-border50 { border-color: var(--plttborder-50); }
+.border-border60 { border-color: var(--plttborder-60); }
+.border-r-border40 { border-right-color: var(--plttborder-40); }
+.border-b-border40 { border-bottom-color: var(--plttborder-40); }
+.border-l-border40 { border-left-color: var(--plttborder-40); }
+/* Mode-tab divider (themed: see --plttdivider in each theme block). A
+   standalone 1px element between the tabs so the selected tab's own border
+   can't hide it. */
+.bg-divider { background-color: var(--plttdivider); }
+
+/* Background counterpart of the translucent border tokens — themed surface
+   (light in light mode, light-dark in dark mode) that keeps its alpha so a
+   backdrop-blur shows through. */
+.bg-border60 { background-color: var(--plttborder-60); }
+
+/* `divide-borderNN` counterpart — colors the inter-child borders that
+   `divide-x`/`divide-y` add (Tailwind applies those to `> :not(:last-child)`). */
+.divide-border40 > :not(:last-child) { border-color: var(--plttborder-40); }
+.divide-border50 > :not(:last-child) { border-color: var(--plttborder-50); }
+.divide-border60 > :not(:last-child) { border-color: var(--plttborder-60); }
+
+/* ── Palette OS (story pipeline) design tokens ──────────────────────────
+   The new single-flow UI (Home → Storyboard → Animate → Publish) uses its
+   own token set, scoped under .pos-root so it can't collide with the host
+   OS or the legacy --pltt tokens. Dark is the default; light overrides via
+   data-pos-theme="light" on the same root element.
+
+   [data-pltt-creative-video-portal-root] (the shared OS-level portal every
+   Radix popover/dialog in this app actually renders into — see
+   app-portal.ts) is a SIBLING of .pos-root in the DOM, not a descendant, so
+   these custom properties wouldn't otherwise cascade into anything
+   portaled there (popovers/menus rendering with unreadable/invisible text —
+   var(--pos-*) resolving to nothing). app.tsx mirrors data-pos-theme onto
+   that container so both selectors below stay in sync with the same
+   tokens. Only the variables themselves are shared this way — `background`/
+   `color`/`font-family` stay exclusive to .pos-root itself. */
+.pos-root,
+[data-pltt-creative-video-portal-root] {
+  /* Native form controls (select dropdowns + arrow, <option> lists, checkbox
+     chrome, textarea spinners) render in the UA's color-scheme, NOT our
+     --pos-* variables. Without this they stay light even on the dark theme —
+     which is why the audio-settings dialog (the only dialog with native
+     controls) looked "light" in the OS sandbox while the delete dialogs, which
+     have no controls, looked fine. pltt dev's document already carries a dark
+     color-scheme, so the bug only surfaced in the published/OS build. Declare
+     it here (with the light override below) so controls track the app theme in
+     every runtime. */
+  color-scheme: dark;
+  --pos-bg: #0A0A0B;
+  --pos-base: #000000;
+  --pos-s1: #101112;
+  --pos-s2: #17181A;
+  --pos-s3: #1E2023;
+  --pos-seg: #2C2E31;
+  --pos-b1: rgba(255, 255, 255, 0.06);
+  --pos-b2: rgba(255, 255, 255, 0.10);
+  --pos-b3: rgba(255, 255, 255, 0.16);
+  --pos-t1: #F5F6F7;
+  --pos-t2: #9C9EA3;
+  --pos-t3: #5F6266;
+  --pos-t4: #3B3D40;
+  --pos-vio: #8B5CF6;
+  --pos-vioT: #B79CFA;
+  --pos-vioS: rgba(139, 92, 246, 0.14);
+  --pos-vioB: rgba(139, 92, 246, 0.4);
+  --pos-org: #FF5C38;
+  --pos-orgT: #FF9377;
+  --pos-orgS: rgba(255, 92, 56, 0.14);
+  --pos-orgB: rgba(255, 92, 56, 0.4);
+  --pos-blu: #2E6BFF;
+  --pos-grn: #3ECF6E;
+  --pos-red: #F0524D;
+  --pos-inv-bg: #F5F6F7;
+  --pos-inv-fg: #0A0A0B;
+}
+.pos-root {
+  background: var(--pos-bg);
+  color: var(--pos-t1);
+  font-family: "Pretendard Variable", Inter, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  transition: background 200ms ease-out;
+}
+.pos-root[data-pos-theme="light"],
+[data-pltt-creative-video-portal-root][data-pos-theme="light"] {
+  color-scheme: light;
+  --pos-bg: #FAFAFB;
+  --pos-base: #FFFFFF;
+  --pos-s1: #F5F5F7;
+  --pos-s2: #EEEEF1;
+  --pos-s3: #E7E7EB;
+  --pos-seg: #FFFFFF;
+  --pos-b1: rgba(0, 0, 0, 0.07);
+  --pos-b2: rgba(0, 0, 0, 0.11);
+  --pos-b3: rgba(0, 0, 0, 0.18);
+  --pos-t1: #141518;
+  --pos-t2: #5B5E64;
+  --pos-t3: #9A9CA2;
+  --pos-t4: #C4C6CB;
+  --pos-vioT: #6D3AE8;
+  --pos-vioS: rgba(139, 92, 246, 0.10);
+  --pos-orgT: #D93F1D;
+  --pos-orgS: rgba(255, 92, 56, 0.10);
+  --pos-inv-bg: #141518;
+  --pos-inv-fg: #FFFFFF;
+}
+
+/* ── Shadcn (--pltt*) tokens for portaled content ───────────────────────
+   The Radix dialogs/popovers/sheets in this app render into the shared
+   portal root (app-portal.ts), a SIBLING of .pos-root. Shadcn primitives
+   there (AlertDialogContent's `bg-background`, buttonVariants' `bg-primary`,
+   `text-muted-foreground`, …) read the --pltt* tokens, which are themed via
+   the `.dark` CLASS on the app root (see :root / .dark above). In the
+   published/OS build the CLI scopes plugin CSS, and that class-based theme
+   does NOT reach the portaled subtree — so the dialog surface + buttons fell
+   back to the light `:root` values (white panel, inverted buttons) even in
+   dark mode, while the --pos-* form fields stayed correctly dark (those ARE
+   declared directly on the portal-root selector). `pltt dev` doesn't scope,
+   so it only broke in production.
+
+   Fix: mirror the --pltt* tokens directly onto the portal-root element, keyed
+   on the SAME `data-pos-theme` attribute app.tsx already sets there — exactly
+   how --pos-* is handled. Dark is the default; light overrides below. This is
+   independent of the `.dark` class, so it holds in every runtime. */
+[data-pltt-creative-video-portal-root] {
+  --plttbackground: oklch(0 0 0);
+  --plttforeground: oklch(0.96 0 0);
+  --plttcard: oklch(0 0 0);
+  --plttcard-foreground: oklch(0.96 0 0);
+  --plttpopover: oklch(0 0 0);
+  --plttpopover-foreground: oklch(0.96 0 0);
+  --plttprimary: oklch(1 0 0);
+  --plttprimary-foreground: oklch(0 0 0);
+  --plttsecondary: oklch(0.18 0 0);
+  --plttsecondary-foreground: oklch(0.88 0 0);
+  --plttmuted: oklch(0.16 0 0);
+  --plttmuted-foreground: oklch(0.55 0 0);
+  --plttaccent: oklch(0.18 0 0);
+  --plttaccent-foreground: oklch(0.88 0 0);
+  --plttdestructive: oklch(0.5954 0.2344 23.9586);
+  --plttdestructive-foreground: oklch(1.0000 0 0);
+  --plttborder: oklch(0.25 0 0);
+  --plttborder-40: oklch(0.25 0 0 / 0.4);
+  --plttborder-50: oklch(0.25 0 0 / 0.5);
+  --plttborder-60: oklch(0.25 0 0 / 0.6);
+  --plttinput: oklch(0.18 0 0);
+  --plttring: oklch(0.40 0 0);
+}
+[data-pltt-creative-video-portal-root][data-pos-theme="light"] {
+  --plttbackground: oklch(1.0000 0 0);
+  --plttforeground: oklch(0.12 0 0);
+  --plttcard: oklch(1.0000 0 0);
+  --plttcard-foreground: oklch(0.12 0 0);
+  --plttpopover: oklch(1.0000 0 0);
+  --plttpopover-foreground: oklch(0.12 0 0);
+  --plttprimary: oklch(0 0 0);
+  --plttprimary-foreground: oklch(1 0 0);
+  --plttsecondary: oklch(0.94 0 0);
+  --plttsecondary-foreground: oklch(0.15 0 0);
+  --plttmuted: oklch(0.96 0 0);
+  --plttmuted-foreground: oklch(0.50 0 0);
+  --plttaccent: oklch(0.94 0 0);
+  --plttaccent-foreground: oklch(0.15 0 0);
+  --plttdestructive: oklch(0.5954 0.2344 23.9586);
+  --plttdestructive-foreground: oklch(1.0000 0 0);
+  --plttborder: oklch(0.88 0 0);
+  --plttborder-40: oklch(0.88 0 0 / 0.4);
+  --plttborder-50: oklch(0.88 0 0 / 0.5);
+  --plttborder-60: oklch(0.88 0 0 / 0.6);
+  --plttinput: oklch(0.92 0 0);
+  --plttring: oklch(0.70 0 0);
+}
+.pos-mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@keyframes pos-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes pos-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pos-pulse { animation: pos-pulse 1.2s ease-in-out infinite; }
+/* Shimmering "Thinking…"-style text, straight from the reference design. */
+.pos-shimmer-text {
+  background: linear-gradient(90deg, var(--pos-t3) 35%, var(--pos-t1) 50%, var(--pos-t3) 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: pos-shimmer 1.6s linear infinite;
+}
+/* Diagonal placeholder stripes for empty media tiles. */
+.pos-stripes {
+  background: repeating-linear-gradient(45deg, var(--pos-s2) 0 12px, var(--pos-s3) 12px 24px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pos-pulse, .pos-shimmer-text { animation: none; }
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128,128,128,0.25) transparent;
+}
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(128,128,128,0.25);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(128,128,128,0.45);
+}

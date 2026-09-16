@@ -1,0 +1,15 @@
+{
+  "name": "corporate-card-system",
+  "version": "0.2.1",
+  "private": true,
+  "scripts": {
+    "publish:app": "node scripts/publish-app.mjs",
+    "publish:staging": "node scripts/publish-app.mjs --env staging",
+    "publish:production": "node scripts/publish-app.mjs --env production"
+  },
+  "dependencies": {
+    "@palettelab/cli": "^0.3.53",
+    "@palettelab/sdk": "^0.1.31",
+    "react": "^19.0.0"
+  }
+}

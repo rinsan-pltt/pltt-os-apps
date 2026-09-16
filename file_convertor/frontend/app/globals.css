@@ -1,0 +1,589 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ===========================================================================
+   TOKENS
+   ---------------------------------------------------------------------------
+   Two rules govern this file, and both exist because of how Palette OS ships
+   plugin CSS. `@palettelab/cli/lib/bundler.js` runs `scopePluginCss` at
+   PUBLISH time (never in `pltt dev`, which injects the CSS unscoped — so
+   theming bugs are invisible in the simulator and appear only on the
+   platform). Verified by running the scoper over this plugin's own build:
+
+     :root  ->  [data-palette-plugin-root=file-handler-and-convertor]  (REPLACED)
+     .dark  ->  [data-palette-plugin-root=file-handler-and-convertor] .dark
+
+   1. EVERY custom property is namespaced `--dt-*`. `:root` is replaced but not
+      renamed, so plugin and host both declare `--primary`, `--card`, `--radius`
+      on the same selector — source order decides and the host's sheet loads
+      last. Tailwind's theme keys keep their public names on the left of
+      `@theme inline`, so no utility class name changes.
+
+   2. Both palettes are keyed off an attribute this plugin puts on its OWN root
+      (`[data-dt-root][data-dt-theme=…]`), never off a host class. Every element
+      the host could mark is an ANCESTOR of the plugin root, so the scoped
+      descendant selector `… .dark` can never match it. `.dark` is retained
+      purely so the simulator (unscoped) still works, and because the
+      `dark:` variant above is `&:is(.dark *)` — a descendant selector — which
+      is what the 60-odd `dark:` utilities in the components rely on.
+      `app/layout.tsx` therefore sets BOTH the attribute and the class.
+
+   3. Theme blocks carry ONLY colour, shadow and `color-scheme`. Geometry, type
+      and motion live on the bare `:root` below. An attribute-selected theme
+      block is specificity (0,3,0) once scoped, while the responsive overrides
+      are `@media { :root { … } }` at (0,1,0) — put spacing in a theme block and
+      switching light/dark visibly changes every gutter in the app.
+
+   Every foreground/background pairing below was checked against WCAG 2.x with
+   a script rather than by eye: 36 pairings, all passing (4.5:1 for text, 3:1
+   for the input boundary and the focus ring per 1.4.11).
+   ======================================================================== */
+
+:root,
+[data-dt-root][data-dt-theme="light"] {
+  color-scheme: light;
+
+  --dt-background: oklch(0.99 0.002 250);
+  --dt-foreground: oklch(0.2 0.02 260);
+  --dt-card: oklch(1 0 0);
+  --dt-card-foreground: oklch(0.2 0.02 260);
+
+  --dt-muted: oklch(0.962 0.008 250);
+  --dt-muted-foreground: oklch(0.5 0.02 260);
+  --dt-secondary: oklch(0.962 0.008 250);
+  --dt-secondary-foreground: oklch(0.25 0.02 260);
+
+  /* The manifest brand is #E5322D -> #F97316. #E5322D is oklch(0.585 0.207 27)
+     and gives white text only 4.65:1 — passing, with no margin. One step
+     darker reads as the same brand and clears 5.2:1. */
+  --dt-primary: oklch(0.55 0.2 27);
+  --dt-primary-foreground: oklch(1 0 0);
+  --dt-primary-hover: oklch(0.5 0.2 27);
+  --dt-accent: oklch(0.965 0.022 45);
+  --dt-accent-foreground: oklch(0.27 0.03 40);
+
+  /* Crimson, not the brand red. The old palette had --primary at hue 20 and
+     --destructive at hue 25 — five degrees apart, so "Delete" and "Convert"
+     were the same button in different words. These are 19 degrees apart. */
+  --dt-destructive: oklch(0.47 0.205 8);
+  --dt-destructive-foreground: oklch(1 0 0);
+  --dt-destructive-text: oklch(0.44 0.195 8);
+  --dt-destructive-subtle: oklch(0.968 0.022 8);
+
+  /* Semantic status colours. The old file defined only --destructive, which is
+     why six workspaces hardcoded the same emerald success banner. */
+  --dt-success: oklch(0.52 0.13 160);
+  --dt-success-text: oklch(0.43 0.11 160);
+  --dt-success-subtle: oklch(0.965 0.03 160);
+  --dt-warning: oklch(0.62 0.15 70);
+  --dt-warning-text: oklch(0.47 0.12 60);
+  --dt-warning-subtle: oklch(0.97 0.04 75);
+  --dt-info: oklch(0.55 0.15 250);
+  --dt-info-text: oklch(0.47 0.15 250);
+  --dt-info-subtle: oklch(0.966 0.025 250);
+
+  --dt-border: oklch(0.92 0.005 250);
+  --dt-border-strong: oklch(0.865 0.008 250);
+  /* A field's boundary is "information required to identify a UI component",
+     so it must clear 3:1 (WCAG 1.4.11). The decorative card border need not,
+     and darkening it to match would make every surface look boxed in. */
+  --dt-input: oklch(0.655 0.012 250);
+  --dt-ring: oklch(0.55 0.2 27);
+
+  /* --- the signature element ---------------------------------------------
+     "Sheet" means one thing only: this is the user's document. Warm paper
+     white in BOTH themes, deliberately — a document is white paper, and
+     inverting it in dark mode would misrepresent what the user is about to
+     print or send. The desk around it darkens instead, which is what makes
+     the sheet read as an object sitting on a surface. */
+  --dt-sheet: oklch(0.995 0.005 85);
+  --dt-sheet-foreground: oklch(0.215 0.01 265);
+  --dt-sheet-muted: oklch(0.52 0.01 265);
+  --dt-sheet-edge: oklch(0.9 0.006 85);
+
+  --dt-shadow-sm: 0 1px 2px 0 oklch(0.2 0.02 260 / 0.05);
+  --dt-shadow-md: 0 2px 6px -1px oklch(0.2 0.02 260 / 0.08), 0 1px 2px oklch(0.2 0.02 260 / 0.04);
+  --dt-shadow-lg: 0 12px 28px -8px oklch(0.2 0.02 260 / 0.18), 0 2px 6px oklch(0.2 0.02 260 / 0.06);
+  --dt-shadow-sheet: 0 1px 1px oklch(0.2 0.02 260 / 0.06), 0 8px 20px -6px oklch(0.2 0.02 260 / 0.14);
+
+  --dt-brand-gradient: linear-gradient(135deg, oklch(0.585 0.207 27), oklch(0.7 0.188 48));
+}
+
+.dark,
+[data-dt-root][data-dt-theme="dark"] {
+  color-scheme: dark;
+
+  --dt-background: oklch(0.16 0.015 260);
+  --dt-foreground: oklch(0.95 0.005 250);
+  --dt-card: oklch(0.205 0.015 260);
+  --dt-card-foreground: oklch(0.95 0.005 250);
+
+  --dt-muted: oklch(0.255 0.015 260);
+  --dt-muted-foreground: oklch(0.7 0.012 250);
+  --dt-secondary: oklch(0.255 0.015 260);
+  --dt-secondary-foreground: oklch(0.95 0.005 250);
+
+  --dt-primary: oklch(0.64 0.195 30);
+  --dt-primary-foreground: oklch(0.16 0.03 30);
+  --dt-primary-hover: oklch(0.69 0.185 32);
+  --dt-accent: oklch(0.285 0.03 40);
+  --dt-accent-foreground: oklch(0.95 0.005 250);
+
+  --dt-destructive: oklch(0.655 0.19 8);
+  --dt-destructive-foreground: oklch(0.16 0.015 260);
+  --dt-destructive-text: oklch(0.8 0.13 8);
+  --dt-destructive-subtle: oklch(0.27 0.065 8);
+
+  --dt-success: oklch(0.7 0.14 160);
+  --dt-success-text: oklch(0.82 0.12 160);
+  --dt-success-subtle: oklch(0.275 0.05 160);
+  --dt-warning: oklch(0.76 0.14 75);
+  --dt-warning-text: oklch(0.85 0.11 78);
+  --dt-warning-subtle: oklch(0.29 0.05 70);
+  --dt-info: oklch(0.68 0.14 250);
+  --dt-info-text: oklch(0.81 0.11 250);
+  --dt-info-subtle: oklch(0.275 0.05 250);
+
+  --dt-border: oklch(0.3 0.015 260);
+  --dt-border-strong: oklch(0.38 0.018 260);
+  --dt-input: oklch(0.52 0.018 260);
+  --dt-ring: oklch(0.64 0.195 30);
+
+  /* Unchanged from light on purpose — see the note above. */
+  --dt-sheet: oklch(0.995 0.005 85);
+  --dt-sheet-foreground: oklch(0.215 0.01 265);
+  --dt-sheet-muted: oklch(0.52 0.01 265);
+  --dt-sheet-edge: oklch(0.86 0.008 85);
+
+  --dt-shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.4);
+  --dt-shadow-md: 0 2px 6px -1px oklch(0 0 0 / 0.5), 0 1px 2px oklch(0 0 0 / 0.3);
+  --dt-shadow-lg: 0 12px 28px -8px oklch(0 0 0 / 0.6), 0 2px 6px oklch(0 0 0 / 0.4);
+  --dt-shadow-sheet: 0 1px 1px oklch(0 0 0 / 0.5), 0 10px 24px -6px oklch(0 0 0 / 0.6);
+
+  --dt-brand-gradient: linear-gradient(135deg, oklch(0.63 0.2 27), oklch(0.74 0.18 48));
+}
+
+/* --------------------------------------------------------------------------
+   Theme-INDEPENDENT tokens. Geometry, typography and motion only — see rule 3
+   above for why these must not live in a theme block.
+   -------------------------------------------------------------------------- */
+:root {
+  /* One lever: `lg` = control, `xl` = surface, `2xl` = dialog, `full` = pill.
+     Every existing rounded-* literal in the app re-proportions from this. */
+  --dt-radius: 0.75rem;
+
+  --dt-space-1: 0.25rem;
+  --dt-space-2: 0.5rem;
+  --dt-space-3: 0.75rem;
+  --dt-space-4: 1rem;
+  --dt-space-5: 1.5rem;
+  --dt-space-6: 2rem;
+  --dt-space-7: 3rem;
+  --dt-space-8: 4rem;
+
+  /* Semantic spacing, set once per level: page gutter and surface padding. */
+  --dt-pad-gutter: 1rem;
+  --dt-pad-surface: 1.25rem;
+  --dt-gap-section: 1.5rem;
+  /* 1rem -> 1.25rem at 40rem -> 1.5rem on an external display (100rem, the
+     same tier --dt-card-min steps at). It used to be a flat 1rem at every
+     width while the gutter grew to 2rem and a card's own padding to 1.75rem,
+     so on a large display the gaps BETWEEN cards were still at their 320px
+     value and the grid read as tighter than everything around it, exactly
+     where there was most room to spare.
+
+     The big step is held back to 100rem rather than following the gutter at
+     64rem so that a 13" laptop, whose layout is already right, moves by 4px
+     rather than 8px. */
+  --dt-gap-block: 1rem;
+
+  --dt-sidebar-w: 15.5rem;
+  --dt-rail-w: 4rem;
+  --dt-topbar-h: 3.5rem;
+
+  /* Content width, chosen per content SHAPE rather than one shared cap.
+     Everything used to be `max-w-6xl` (1152px), which is right at a 13"
+     laptop and wrong above it: at 2560px the page became a 1152px island with
+     580px of dead gutter each side, and at 3440px it used 36% of the width.
+
+     A card GRID can use nearly all of a large display, because it absorbs
+     width as more columns and the cards keep their size — scanning six 280px
+     cards beats scanning four 400px ones.
+
+     A single-column FORM cannot. A 2000px dropzone above a 2000px button is
+     worse than a 672px one, so a form keeps its measure and centres. What
+     made the old tool page look broken wide was not the empty space, it was
+     the header spanning 1152px while the card inside was 672px — which left
+     the `PDF ->` chip stranded 840px from the title it belongs to. The header
+     shares the content's container now, so the margin reads as margin.
+
+     PAGE sits between the two: file lists and saved-workflow detail that
+     genuinely get better with more room, but are not grids. PANEL is a form
+     that also displays generated prose (the AI tools), where a slightly longer
+     measure reads better.
+
+     These are matched to what each workspace actually renders, because the
+     page header lives OUTSIDE the workspace: set the page wider than its
+     content and the chip strands again, which is the bug this is fixing. */
+  /* The smallest a tool card may get before the grid drops a column. The
+     grid is intrinsic (`auto-fill`), so this one number decides the column
+     count at every width — 2 columns in the 768px band where the sidebar and
+     the scrollbar leave the grid only 457px, 4 at a 13" laptop, 6 on a large
+     display. 13.5rem rather than 14rem because 14rem misses two columns at
+     457px by 7px and drops to a single 457px-wide card.
+
+     It steps up past 100rem for the same reason the gutters do: on an external
+     display the extra width is better spent keeping cards at their comfortable
+     size than on a seventh narrow column. Only the PREFERRED size is keyed to
+     the viewport — the column count still comes from the container, so
+     collapsing the sidebar re-flows the grid without a breakpoint. */
+  --dt-card-min: 13.5rem;
+
+  /* A card's text block, reserved: two lines of title + `mt-1` + two lines of
+     description. Holding the BLOCK constant rather than each line means a
+     one-line title keeps its description right beneath it and the slack falls
+     at the bottom of the card — reserving each line separately instead opened
+     a visible gap between every short title and its own description.
+
+     The numbers mirror --text-heading (1.0625rem/1.35) and --text-caption
+     (0.8125rem/1.45) a few lines below, and have to be written out: `@theme
+     inline` resolves those at build time and emits no runtime custom property
+     to reference here. Keep the two in step. */
+  --dt-card-text-h: calc(2 * 1.0625rem * 1.35 + 0.25rem + 2 * 0.8125rem * 1.45);
+
+  --dt-w-grid: 110rem;
+  --dt-w-page: 80rem;
+  --dt-w-panel: 48rem;
+  --dt-w-form: 42rem;
+
+  --dt-dur-instant: 120ms;
+  --dt-dur-fast: 180ms;
+  --dt-dur-slow: 300ms;
+  --dt-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (min-width: 40rem) {
+  :root {
+    --dt-pad-gutter: 1.5rem;
+    --dt-pad-surface: 1.5rem;
+    --dt-gap-block: 1.25rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --dt-pad-gutter: 2rem;
+    --dt-pad-surface: 1.75rem;
+    --dt-gap-section: 2rem;
+  }
+}
+
+@media (min-width: 100rem) {
+  :root {
+    --dt-card-min: 16rem;
+    --dt-gap-block: 1.5rem;
+  }
+}
+
+/* A document tool is used on laptops with little vertical room; give the
+   working area its space back rather than letting chrome eat it. */
+@media (max-height: 48rem) {
+  :root {
+    --dt-gap-section: 1.25rem;
+    --dt-pad-surface: 1.125rem;
+  }
+}
+
+@theme inline {
+  --color-background: var(--dt-background);
+  --color-foreground: var(--dt-foreground);
+  --color-card: var(--dt-card);
+  --color-card-foreground: var(--dt-card-foreground);
+  --color-primary: var(--dt-primary);
+  --color-primary-foreground: var(--dt-primary-foreground);
+  --color-primary-hover: var(--dt-primary-hover);
+  --color-secondary: var(--dt-secondary);
+  --color-secondary-foreground: var(--dt-secondary-foreground);
+  --color-muted: var(--dt-muted);
+  --color-muted-foreground: var(--dt-muted-foreground);
+  --color-accent: var(--dt-accent);
+  --color-accent-foreground: var(--dt-accent-foreground);
+  --color-destructive: var(--dt-destructive);
+  --color-destructive-foreground: var(--dt-destructive-foreground);
+  --color-destructive-text: var(--dt-destructive-text);
+  --color-destructive-subtle: var(--dt-destructive-subtle);
+  --color-success: var(--dt-success);
+  --color-success-text: var(--dt-success-text);
+  --color-success-subtle: var(--dt-success-subtle);
+  --color-warning: var(--dt-warning);
+  --color-warning-text: var(--dt-warning-text);
+  --color-warning-subtle: var(--dt-warning-subtle);
+  --color-info: var(--dt-info);
+  --color-info-text: var(--dt-info-text);
+  --color-info-subtle: var(--dt-info-subtle);
+  --color-border: var(--dt-border);
+  --color-border-strong: var(--dt-border-strong);
+  --color-input: var(--dt-input);
+  --color-ring: var(--dt-ring);
+  --color-sheet: var(--dt-sheet);
+  --color-sheet-foreground: var(--dt-sheet-foreground);
+  --color-sheet-muted: var(--dt-sheet-muted);
+  --color-sheet-edge: var(--dt-sheet-edge);
+
+  --radius-sm: calc(var(--dt-radius) - 6px);
+  --radius-md: calc(var(--dt-radius) - 4px);
+  --radius-lg: var(--dt-radius);
+  --radius-xl: calc(var(--dt-radius) + 8px);
+  --radius-2xl: calc(var(--dt-radius) + 16px);
+
+  --container-grid: var(--dt-w-grid);
+  --container-page: var(--dt-w-page);
+  --container-panel: var(--dt-w-panel);
+  --container-form: var(--dt-w-form);
+
+  --spacing-gutter: var(--dt-pad-gutter);
+  --spacing-surface: var(--dt-pad-surface);
+  --spacing-section: var(--dt-gap-section);
+  --spacing-block: var(--dt-gap-block);
+
+  /* One type scale, replacing the ad-hoc text-3xl / text-lg / text-sm /
+     text-[15px] / text-[11px] mix the app used. */
+  --text-display: 2rem;
+  --text-display--line-height: 1.12;
+  --text-display--letter-spacing: -0.022em;
+  --text-display--font-weight: 700;
+  --text-title: 1.5rem;
+  --text-title--line-height: 1.2;
+  --text-title--letter-spacing: -0.018em;
+  --text-title--font-weight: 650;
+  --text-heading: 1.0625rem;
+  --text-heading--line-height: 1.35;
+  --text-heading--letter-spacing: -0.011em;
+  --text-heading--font-weight: 600;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.55;
+  --text-ui: 0.875rem;
+  --text-ui--line-height: 1.4;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.45;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.4;
+  --text-micro--letter-spacing: 0.045em;
+  --text-micro--font-weight: 500;
+
+  --shadow-sm: var(--dt-shadow-sm);
+  --shadow-md: var(--dt-shadow-md);
+  --shadow-lg: var(--dt-shadow-lg);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* ===========================================================================
+   THE SHEET — the one surface treatment that means "your document".
+   Used only where the app is holding a file. Everything else in the UI stays
+   a flat card, which is what keeps this a signature rather than a theme.
+   ======================================================================== */
+.dt-sheet {
+  background: var(--dt-sheet);
+  color: var(--dt-sheet-foreground);
+  box-shadow:
+    0 0 0 1px var(--dt-sheet-edge),
+    var(--dt-shadow-sheet);
+}
+
+/* A document with more than one page: two more sheets peek out behind it. */
+.dt-sheet-stack {
+  position: relative;
+}
+.dt-sheet-stack::before,
+.dt-sheet-stack::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dt-sheet);
+  box-shadow: 0 0 0 1px var(--dt-sheet-edge);
+}
+.dt-sheet-stack::before {
+  transform: translate(3px, 3px);
+}
+.dt-sheet-stack::after {
+  transform: translate(6px, 6px);
+}
+
+/* ---------------------------------------------------------------------------
+   Document editor sheet — keeps the original document's own look inside the
+   contenteditable. Unchanged from the original file: these rules are what make
+   an imported document render like itself.
+--------------------------------------------------------------------------- */
+.doc-sheet table {
+  border-collapse: collapse;
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+.doc-sheet td,
+.doc-sheet th {
+  border: 1px solid var(--dt-sheet-edge);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+.doc-sheet img {
+  max-width: 100%;
+  height: auto;
+}
+.doc-sheet p {
+  margin: 0 0 0.5em 0;
+}
+.doc-sheet h1,
+.doc-sheet h2,
+.doc-sheet h3 {
+  font-weight: 700;
+  margin: 0.8em 0 0.4em 0;
+}
+.doc-sheet h1 { font-size: 1.6em; }
+.doc-sheet h2 { font-size: 1.35em; }
+.doc-sheet h3 { font-size: 1.15em; }
+.doc-sheet ul,
+.doc-sheet ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+  list-style: revert;
+}
+.doc-sheet a {
+  color: var(--dt-info-text);
+  text-decoration: underline;
+}
+/* Fallback PDF rendering (no pdf2docx on the host): pages arrive as
+   absolutely-positioned blocks — neutralize the sheet's typography so the
+   original positions and line spacing are respected exactly. These pages must
+   also render with NO padding, which is what `Sheet`'s `flush` variant is for;
+   padding here silently destroys the source layout. */
+.doc-sheet .pdf-page {
+  position: relative;
+  margin: 0 auto 1.5rem auto;
+  overflow-x: auto;
+  border-bottom: 1px dashed var(--dt-sheet-edge);
+  padding-bottom: 1rem;
+  line-height: normal;
+  font-size: initial;
+}
+.doc-sheet .pdf-page > div {
+  margin: 0 auto;
+}
+.doc-sheet .pdf-page p {
+  margin: 0;
+  line-height: normal;
+}
+
+/* ---------------------------------------------------------------------------
+   Loading / progress animations.
+   The plugin renders inside a sandboxed iframe on the OS platform, where the
+   "converting" spinner icon was appearing frozen. Define spin explicitly here
+   (not via Tailwind's `var(--animate-spin)` theme-variable indirection) and pin
+   the rotation to the icon's own centre so it always visibly rotates. Also
+   provide an indeterminate progress bar + skeleton shimmer so long-running
+   conversions/generations show unmistakable "still working" motion even if an
+   icon animation is ever suppressed. Unlayered rules — they win over Tailwind's
+   @layer utilities regardless of source order.
+--------------------------------------------------------------------------- */
+@keyframes fc-spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin,
+.fc-spin {
+  transform-origin: center;
+  animation: fc-spin 1s linear infinite;
+}
+
+@keyframes fc-progress {
+  0%   { left: -40%; width: 40%; }
+  50%  { left: 30%;  width: 45%; }
+  100% { left: 100%; width: 40%; }
+}
+.fc-progress-track {
+  position: relative;
+  overflow: hidden;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: var(--color-muted);
+}
+.fc-progress-track::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  animation: fc-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes fc-shimmer {
+  100% { transform: translateX(100%); }
+}
+.fc-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-muted);
+  border-radius: var(--radius-md);
+}
+.fc-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--color-foreground) 8%, transparent),
+    transparent
+  );
+  animation: fc-shimmer 1.4s infinite;
+}
+
+/* Respect the OS setting. The tool cards lift on hover and the progress bar,
+   shimmer and spinner all loop — none of which should run for someone who has
+   asked for reduced motion. The spinner keeps a slow rotation because it is
+   the only signal that a conversion is still alive. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dt-dur-instant: 0ms;
+    --dt-dur-fast: 0ms;
+    --dt-dur-slow: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin,
+  .fc-spin {
+    animation: fc-spin 2s linear infinite !important;
+  }
+  .fc-progress-track::after {
+    animation: none !important;
+    left: 0 !important;
+    width: 100% !important;
+    opacity: 0.5;
+  }
+  .fc-skeleton::after {
+    animation: none !important;
+  }
+}
+
+/* Images in the document editor are draggable objects, not text — show a move
+   cursor (not the text I-beam) so it's clear they can be repositioned. */
+[data-page-content] img {
+  cursor: move;
+}
+/* Shape fills/strokes are clickable objects (select → move/resize/delete). */
+[data-page-content] .fc-shape {
+  cursor: pointer;
+}

@@ -1,0 +1,75 @@
+{
+  "manifest_version": "1",
+  "id": "file-handler-and-convertor",
+  "name": "Document Toolbox",
+  "version": "0.0.0031",
+  "data_scope": "organization",
+  "developer": "General Purpose Application",
+  "category": "General Apps",
+  "tagline": "Every tool you need to work with your files",
+  "description": "Convert, compress, merge, split and protect documents \u2014 PDF to Word, Word to PDF, PDF to JPG, image conversion, compression, AES-256 password protection and more. Files are processed by the plugin backend and deleted right after conversion.",
+  "icon": "FileOutput",
+  "gradient": {
+    "bg": "linear-gradient(135deg, #E5322D, #F97316)",
+    "text": "#fff"
+  },
+  "sdk": {
+    "frontend": "^0.1.16",
+    "backend": "^0.1.0"
+  },
+  "platform": {
+    "min_version": "0.1.0"
+  },
+  "capabilities": {
+    "frontend": true,
+    "backend": true,
+    "database": false,
+    "webhooks": false,
+    "scheduled_jobs": false,
+    "file_uploads": true,
+    "external_network": [
+      "api.openai.com"
+    ]
+  },
+  "platform_services": [],
+  "public_routes": [],
+  "scheduled_jobs": [],
+  "rate_limit": {
+    "per_minute": 120
+  },
+  "frontend": {
+    "entry": "./frontend/app",
+    "sandbox": true,
+    "framework": "palette-app"
+  },
+  "backend": {
+    "entry": "./backend/api/main.py"
+  },
+  "agents": [
+    {
+      "name": "Document Toolbox",
+      "field": "Document processing",
+      "description": "Converts, compresses and protects documents right inside your Talk channels.",
+      "long_description": "Invite this agent into a Talk channel to run the Document Toolbox where your team already works \u2014 PDF \u2194 Word, image conversion, compression, merge/split and AES-256 password protection \u2014 and get results and status posted into the channel it was invited to.",
+      "category": "General Apps",
+      "icon_name": "FileOutput",
+      "color": "#E5322D"
+    }
+  ],
+  "tools": [],
+  "connections": [],
+  "permissions": [
+    "tasks:read",
+    "resources:read",
+    "resources:write",
+    "chat:write",
+    "data_rooms:read",
+    "data_rooms:write"
+  ],
+  "secrets": {
+    "OPENAI_KEY": {
+      "scope": "plugin",
+      "required": false
+    }
+  }
+}

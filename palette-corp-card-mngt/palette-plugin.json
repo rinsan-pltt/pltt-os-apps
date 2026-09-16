@@ -1,0 +1,163 @@
+{
+  "manifest_version": "1",
+  "id": "corporate-card-system",
+  "name": "Corporate Card System",
+  "version": "0.2.1",
+  "developer": "Palette",
+  "category": "Productivity",
+  "tagline": "Corporate card requests, settlement claims, and approval workflows.",
+  "description": "Palette OS-native corporate card management app with local JSON-backed approval path resolution.",
+  "icon": "CreditCard",
+  "gradient": {
+    "bg": "linear-gradient(135deg, #0F766E, #2563EB)",
+    "text": "#fff"
+  },
+  "sdk": {
+    "frontend": "^0.1.16",
+    "backend": "^0.1.8"
+  },
+  "platform": {
+    "min_version": "0.1.0"
+  },
+  "capabilities": {
+    "frontend": true,
+    "backend": true,
+    "database": true,
+    "webhooks": false,
+    "scheduled_jobs": false,
+    "file_uploads": true,
+    "external_network": [
+      "127.0.0.1:4444",
+      "localhost:4444",
+      "generativelanguage.googleapis.com",
+      "api.openai.com"
+    ]
+  },
+  "secrets": {
+    "LLM_ROUTER_BASE_URL": {
+      "scope": "dev",
+      "required": false,
+      "label": "LLM Router base URL"
+    },
+    "LLM_ROUTER_API_KEY": {
+      "scope": [
+        "dev",
+        "plugin"
+      ],
+      "required": false,
+      "label": "LLM Router API key"
+    },
+    "NUXT_PUBLIC_GATEWAY_KEY": {
+      "scope": [
+        "dev",
+        "plugin"
+      ],
+      "required": false,
+      "label": "LLM Router gateway key alias"
+    },
+    "LLM_ROUTER_FAST_MODEL": {
+      "scope": "dev",
+      "required": false,
+      "label": "LLM Router fast model"
+    },
+    "LLM_ROUTER_TEXT_MODEL": {
+      "scope": "dev",
+      "required": false,
+      "label": "LLM Router text model"
+    },
+    "GEMINI_FLASH_LITE_MODEL": {
+      "scope": "dev",
+      "required": false,
+      "label": "Receipt analysis model"
+    },
+    "GOOGLE_AI_API_KEY": {
+      "scope": [
+        "dev",
+        "plugin"
+      ],
+      "required": false,
+      "label": "Google AI API key for receipt analysis"
+    },
+    "OPENAI_KEY": {
+      "scope": [
+        "dev",
+        "plugin"
+      ],
+      "required": false,
+      "label": "OpenAI API key for receipt analysis"
+    }
+  },
+  "data_scope": "organization",
+  "platform_services": [
+    "storage",
+    "llm"
+  ],
+  "database": {
+    "schema": "app_corporate_card_system",
+    "migrations": "./backend/migrations"
+  },
+  "frontend": {
+    "entry": "./frontend/src/index.tsx",
+    "sandbox": true
+  },
+  "backend": {
+    "entry": "./backend/api/main.py"
+  },
+  "permissions": [
+    "resources:read",
+    "resources:write",
+    "members:read",
+    "chat:write"
+  ],
+  "consumes": {
+    "services": [
+      {
+        "target": "orgx/v1#hierarchy.route.resolve",
+        "required": false,
+        "reason": "Resolve corporate-card finance approval routes from Org Explorer."
+      },
+      {
+        "target": "orgx/v1#hierarchy.route.preview",
+        "required": false,
+        "reason": "Preview finance approval routes before a settlement or pre-spend request is submitted."
+      },
+      {
+        "target": "policy/v1#ask",
+        "required": false,
+        "reason": "Answer corporate-card policy questions through the platform policy RAG service."
+      },
+      {
+        "target": "policy/v1#search",
+        "required": false,
+        "reason": "Retrieve supporting policy passages for corporate-card policy answers."
+      }
+    ],
+    "events": [
+      {
+        "target": "hierarchy/v1#employee.changed",
+        "required": false,
+        "reason": "Refresh approval previews when employee data changes."
+      },
+      {
+        "target": "hierarchy/v1#unit.changed",
+        "required": false,
+        "reason": "Refresh approval previews when organization units change."
+      },
+      {
+        "target": "hierarchy/v1#reporting.changed",
+        "required": false,
+        "reason": "Refresh approval previews when reporting lines change."
+      },
+      {
+        "target": "hierarchy/v1#hierarchy.changed",
+        "required": false,
+        "reason": "Refresh approval previews when hierarchy data changes."
+      },
+      {
+        "target": "policy/v1#policy.changed",
+        "required": false,
+        "reason": "Refresh policy Q&A context when policy content changes."
+      }
+    ]
+  }
+}

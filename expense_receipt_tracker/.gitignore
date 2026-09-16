@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+*.tsbuildinfo
+.next/
+
+# Palette CLI
+.palette/
+frontend/app/.tw.css
+
+# Local data (SQLite DB + stored receipt files for standalone dev)
+backend/data/
+
+# Env & OS
+.env
+.env.local
+.DS_Store
