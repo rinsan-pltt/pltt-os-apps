@@ -12,7 +12,32 @@ export type ToolOption =
       excludeUploadedExtension?: boolean
     }
   | { kind: "text"; name: string; label: string; placeholder: string; required?: boolean }
-  | { kind: "password"; name: string; label: string; placeholder: string; required?: boolean }
+  | {
+      kind: "password"
+      name: string
+      label: string
+      placeholder: string
+      required?: boolean
+      /** Length bounds for a password being SET. Checking an existing one
+       *  (Unlock) leaves these off — that PDF's password is whatever it is. */
+      minLength?: number
+      maxLength?: number
+    }
+
+/** The usual bounds for a new password: 8 at the least, and 32 at the most —
+ *  kept well inside AES-256 PDF's 127-byte limit even for Korean or Japanese,
+ *  which take three bytes a character. The backend enforces the same pair. */
+export const NEW_PASSWORD_LENGTH = { minLength: 8, maxLength: 32 } as const
+
+/** Whether a password option's value is outside its length bounds. Empty is
+ *  not "too short" — `required` already reports that. */
+export function passwordLengthProblem(opt: ToolOption, value: string): "short" | "long" | null {
+  if (opt.kind !== "password" || !value) return null
+  const length = [...value].length
+  if (opt.minLength && length < opt.minLength) return "short"
+  if (opt.maxLength && length > opt.maxLength) return "long"
+  return null
+}
 
 export type Category =
   | "Organize PDF"
@@ -39,8 +64,22 @@ export interface Tool {
    *  "organize": visual page reorder/delete/rotate manager.
    *  "url": take a URL instead of a file upload.
    *  "sign": draw a signature and place it on a page.
+   *  "rotate": page preview that turns with the chosen angle.
+   *  "page-numbers": page preview with the number dragged into position.
    *  "translate": AI translation with a language picker, then the doc editor. */
-  kind?: "convert" | "ai" | "edit" | "organize" | "url" | "sign" | "translate" | "compare" | "watermark" | "crop"
+  kind?:
+    | "convert"
+    | "ai"
+    | "edit"
+    | "organize"
+    | "url"
+    | "sign"
+    | "translate"
+    | "compare"
+    | "watermark"
+    | "crop"
+    | "rotate"
+    | "page-numbers"
   /** Show a badge (e.g. "New!") on the home page card. */
   badge?: string
   /** Hint the file input to open the device camera on mobile (Scan to PDF). */
@@ -53,28 +92,39 @@ export interface Tool {
 
 /** Document types the AI tools can read. */
 const AI_ACCEPT = ".pdf,.docx,.doc,.odt,.rtf,.txt,.md,.log,.pptx,.ppt,.odp,.xlsx,.xls,.ods,.csv"
-/** The document editor reads everything the AI tools do, plus Hancom HWP. */
-const EDIT_ACCEPT = `${AI_ACCEPT},.hwp,.hwpx`
+/** The document editor reads everything the AI tools do, plus Hancom HWP and
+ *  macro-enabled workbooks (it opens a spreadsheet as a real cell grid, so
+ *  .xlsm is no different to it from .xlsx — only the macros are dropped). */
+const EDIT_ACCEPT = `${AI_ACCEPT},.xlsm,.hwp,.hwpx`
+/** What the document-wide tools take: any document the editor reads. The
+ *  backend renders non-PDFs to PDF first (core/documents.py), so the result is
+ *  always a PDF. Tools about the PDF file itself — Compress, Repair, OCR and
+ *  the PDF-to-Office converters — stay on `.pdf`. */
+const DOCUMENT_ACCEPT = EDIT_ACCEPT
+/** Unlock keeps the file's own format, so it takes only what the backend can
+ *  really decrypt: PDF and Microsoft Office (documents.UNLOCKABLE_EXTS). Hancom
+ *  and OpenDocument passwords have no decryption library to call. */
+const UNLOCK_ACCEPT = ".pdf,.docx,.doc,.xlsx,.xlsm,.xls,.pptx,.ppt"
 
 export const TOOLS: Tool[] = [
   // ------------------------------------------------------------ Organize PDF
   {
     slug: "merge-pdf",
-    title: "Merge PDF",
-    description: "Combine multiple PDFs into one document, in the order you choose.",
+    title: "Merge Documents",
+    description: "Combine PDFs, Word, PowerPoint, Excel, HWP and other documents into one PDF, in the order you choose.",
     category: "Organize PDF",
     icon: "Combine",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: true,
-    actionLabel: "Merge PDFs",
+    actionLabel: "Merge documents",
   },
   {
     slug: "split-pdf",
-    title: "Split PDF",
-    description: "Extract pages or page ranges into separate PDF files.",
+    title: "Split Document",
+    description: "Extract pages or page ranges from any document into separate PDF files.",
     category: "Organize PDF",
     icon: "Scissors",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     options: [
       {
@@ -84,7 +134,7 @@ export const TOOLS: Tool[] = [
         placeholder: "e.g. 1-3,5,7-9 — leave empty for one file per page",
       },
     ],
-    actionLabel: "Split PDF",
+    actionLabel: "Split document",
   },
   {
     slug: "compress-pdf",
@@ -111,12 +161,13 @@ export const TOOLS: Tool[] = [
   },
   {
     slug: "rotate-pdf",
-    title: "Rotate PDF",
-    description: "Rotate all pages by 90, 180 or 270 degrees.",
+    title: "Rotate Document",
+    description: "Rotate every page of a document by 90, 180 or 270 degrees and save it as a PDF.",
     category: "Organize PDF",
     icon: "RotateCw",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
+    kind: "rotate",
     options: [
       {
         kind: "select",
@@ -130,15 +181,15 @@ export const TOOLS: Tool[] = [
         default: "90",
       },
     ],
-    actionLabel: "Rotate PDF",
+    actionLabel: "Rotate document",
   },
   {
     slug: "organize-pdf",
-    title: "Organize PDF",
-    description: "Reorder, rotate or delete pages with a visual page-by-page editor.",
+    title: "Organize Document",
+    description: "Reorder, rotate or delete the pages of any document with a visual page-by-page editor.",
     category: "Organize PDF",
     icon: "LayoutGrid",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     kind: "organize",
     actionLabel: "Organize pages",
@@ -156,11 +207,11 @@ export const TOOLS: Tool[] = [
   },
   {
     slug: "pdf-to-pdfa",
-    title: "PDF to PDF/A",
-    description: "Tag your PDF for long-term archiving with PDF/A metadata and an ICC profile.",
+    title: "Document to PDF/A",
+    description: "Turn any document into a PDF/A file for long-term archiving, with PDF/A metadata and an ICC profile.",
     category: "Optimize PDF",
     icon: "Archive",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     actionLabel: "Convert to PDF/A",
   },
@@ -303,31 +354,31 @@ export const TOOLS: Tool[] = [
   },
   {
     slug: "pdf-to-jpg",
-    title: "PDF to JPG",
-    description: "Export every PDF page as a high-quality JPG image.",
+    title: "Document to JPG",
+    description: "Export every page of a document as a high-quality JPG image.",
     category: "Convert PDF",
     icon: "Image",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     actionLabel: "Convert to JPG",
   },
   {
     slug: "pdf-to-text",
-    title: "PDF to Text",
-    description: "Extract all text from a PDF into a plain .txt file.",
+    title: "Document to Text",
+    description: "Extract all text from a document into a plain .txt file.",
     category: "Convert PDF",
     icon: "AlignLeft",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     actionLabel: "Extract Text",
   },
   {
     slug: "pdf-to-markdown",
-    title: "PDF to Markdown",
-    description: "Turn PDFs into Markdown. Headings, tables, lists and links preserved automatically.",
+    title: "Document to Markdown",
+    description: "Turn documents into Markdown. Headings, tables, lists and links preserved automatically.",
     category: "Convert PDF",
     icon: "FileCode",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     actionLabel: "Convert to Markdown",
   },
@@ -344,42 +395,42 @@ export const TOOLS: Tool[] = [
   // ------------------------------------------------------------ PDF Security
   {
     slug: "protect-pdf",
-    title: "Protect PDF",
-    description: "Encrypt your PDF with a password (AES-256).",
+    title: "Protect Document",
+    description: "Add a password to any document. Word, Excel and PowerPoint files (.docx, .xlsx, .pptx) stay in their own format; PDFs stay PDFs; other documents become a password-protected PDF (AES-256).",
     category: "PDF Security",
     icon: "Lock",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     options: [
-      { kind: "password", name: "password", label: "Password", placeholder: "Choose a password", required: true },
+      { kind: "password", name: "password", label: "Password", placeholder: "Choose a password", required: true, ...NEW_PASSWORD_LENGTH },
     ],
-    actionLabel: "Protect PDF",
+    actionLabel: "Protect document",
   },
   {
     slug: "unlock-pdf",
-    title: "Unlock PDF",
-    description: "Remove a password from a PDF you own.",
+    title: "Unlock Document",
+    description: "Remove the password from a PDF, Word, Excel or PowerPoint file you own. You get the same file back, unlocked.",
     category: "PDF Security",
     icon: "Unlock",
-    accept: ".pdf",
+    accept: UNLOCK_ACCEPT,
     multiple: false,
     options: [
-      { kind: "password", name: "password", label: "Current password", placeholder: "PDF password", required: true },
+      { kind: "password", name: "password", label: "Current password", placeholder: "Document password", required: true },
     ],
-    actionLabel: "Unlock PDF",
+    actionLabel: "Unlock document",
   },
   {
     slug: "redact-pdf",
-    title: "Redact PDF",
-    description: "Permanently remove sensitive text from a PDF — search a phrase and black it out.",
+    title: "Redact Document",
+    description: "Permanently remove sensitive text from a document — search a phrase and black it out. Saved as a PDF.",
     category: "PDF Security",
     icon: "EyeOff",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     options: [
       { kind: "text", name: "term", label: "Text to redact", placeholder: "e.g. Social Security Number", required: true },
     ],
-    actionLabel: "Redact PDF",
+    actionLabel: "Redact document",
   },
   // ---------------------------------------------------------------- Edit PDF
   {
@@ -396,10 +447,10 @@ export const TOOLS: Tool[] = [
   {
     slug: "watermark-pdf",
     title: "Watermark",
-    description: "Stamp text over your PDF. Choose the position, color and transparency.",
+    description: "Stamp text over your document. Choose the position, color and transparency.",
     category: "Edit PDF",
     icon: "Droplets",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     kind: "watermark",
     actionLabel: "Add watermark",
@@ -407,11 +458,12 @@ export const TOOLS: Tool[] = [
   {
     slug: "page-numbers-pdf",
     title: "Page numbers",
-    description: "Add page numbers to your PDF. Choose the position and starting number.",
+    description: "Add page numbers to your document. Choose the position and starting number.",
     category: "Edit PDF",
     icon: "Hash",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
+    kind: "page-numbers",
     options: [
       {
         kind: "select",
@@ -433,31 +485,31 @@ export const TOOLS: Tool[] = [
   },
   {
     slug: "crop-pdf",
-    title: "Crop PDF",
-    description: "Crop the margins of your PDF pages by an exact amount.",
+    title: "Crop Document",
+    description: "Crop the margins of your document's pages by an exact amount.",
     category: "Edit PDF",
     icon: "Crop",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     kind: "crop",
-    actionLabel: "Crop PDF",
+    actionLabel: "Crop document",
   },
   {
     slug: "sign-pdf",
-    title: "Sign PDF",
-    description: "Draw your signature and place it anywhere on your PDF.",
+    title: "Sign Document",
+    description: "Draw your signature and place it anywhere on your document.",
     category: "Edit PDF",
     icon: "PenTool",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: false,
     kind: "sign",
-    actionLabel: "Sign PDF",
+    actionLabel: "Sign document",
   },
   // ----------------------------------------------------------- PDF Intelligence
   {
     slug: "summarize-document",
     title: "AI Summarizer",
-    description: "Quickly generate concise summaries from any document, with clear, precise key points.",
+    description: "Summarize a document or ask anything about it — every answer can be copied.",
     category: "PDF Intelligence",
     icon: "Sparkles",
     accept: AI_ACCEPT,
@@ -484,22 +536,22 @@ export const TOOLS: Tool[] = [
     description: "AI proofreads your document, fixes spelling and grammar, and shows every fix.",
     category: "PDF Intelligence",
     icon: "SpellCheck",
-    accept: AI_ACCEPT,
+    accept: EDIT_ACCEPT,
     multiple: false,
     kind: "ai",
     actionLabel: "Check & Fix",
   },
   {
     slug: "compare-pdf",
-    title: "Compare PDF",
-    description: "Show a side-by-side text comparison and spot changes between two PDF versions.",
+    title: "Compare Documents",
+    description: "Show a side-by-side text comparison and spot changes between two document versions.",
     category: "PDF Intelligence",
     icon: "GitCompare",
-    accept: ".pdf",
+    accept: DOCUMENT_ACCEPT,
     multiple: true,
     exactFiles: 2,
     kind: "compare",
-    actionLabel: "Compare PDFs",
+    actionLabel: "Compare documents",
   },
   {
     slug: "translate-pdf",
@@ -683,6 +735,21 @@ export function acceptedFormats(accept: string): string[] {
   return out
 }
 
+/**
+ * A tool's (or a section's) accepted formats, capped.
+ *
+ * Twenty format names is not information, it is a wall: the Convert PDF
+ * section accepts everything its thirteen tools do between them, and the
+ * Edit PDF editor alone reads seventeen. Callers render `shown` and, when
+ * `more` is non-zero, their own translated "+N more" — the phrasing differs
+ * by surface, the cap does not.
+ */
+export function formatSummary(accept: string, max = 8): { shown: string; more: number } {
+  const formats = acceptedFormats(accept)
+  if (formats.length <= max) return { shown: formats.join(" · "), more: 0 }
+  return { shown: formats.slice(0, max).join(" · "), more: formats.length - max }
+}
+
 export const OUTPUT_FORMAT: Record<string, string | undefined> = {
   "pdf-to-word": "DOCX",
   "pdf-to-powerpoint": "PPTX",
@@ -704,4 +771,94 @@ export const OUTPUT_FORMAT: Record<string, string | undefined> = {
 
 export function getTool(slug: string): Tool | undefined {
   return TOOLS.find((t) => t.slug === slug)
+}
+
+// ---------------------------------------------------------------- Sections
+//
+// A category page is a workspace, not a list: one upload at the top, every
+// tool in the section beside it, and no re-upload to move between them. These
+// are the registry questions that screen asks.
+
+/** Every tool in a section, in registry order. */
+export function toolsInCategory(category: Category): Tool[] {
+  return TOOLS.filter((t) => t.category === category)
+}
+
+/**
+ * What a section's dropzone accepts: the union of its tools' `accept` strings.
+ *
+ * Deliberately the union and not the intersection. "Convert PDF" holds both
+ * `word-to-pdf` (.docx) and `pdf-to-word` (.pdf) — an intersection is empty
+ * there, and would refuse every file the section exists to handle. The file is
+ * taken first and each tool then says whether it can use it; see `toolFit`.
+ */
+export function categoryAccept(category: Category): string {
+  const seen = new Set<string>()
+  for (const tool of toolsInCategory(category)) {
+    for (const raw of tool.accept.split(",")) {
+      const ext = raw.trim().toLowerCase()
+      if (ext) seen.add(ext)
+    }
+  }
+  return [...seen].join(",")
+}
+
+/** Whether a section's dropzone should take more than one file — true as soon
+ *  as ONE of its tools does (Merge PDF, say), with the per-tool limits left to
+ *  `toolFit` rather than enforced on the way in. */
+export function categoryMultiple(category: Category): boolean {
+  return toolsInCategory(category).some((t) => t.multiple)
+}
+
+/**
+ * Whether a tool can run on the files in hand, and if not, why.
+ *
+ * The reason is returned as data rather than a sentence: the section screen
+ * puts it under a greyed-out tool, and that text is translated at the call
+ * site like every other label in the app.
+ */
+export type ToolFit =
+  | { ok: true }
+  /** Wrong type — the tool reads `formats` and nothing else. */
+  | { ok: false; reason: "format"; formats: string[] }
+  /** One at a time, and more than one file is loaded. */
+  | { ok: false; reason: "single" }
+  /** Holds at most `need` files (Compare PDF), and more are loaded. */
+  | { ok: false; reason: "exact"; need: number }
+
+/**
+ * Whether a tool works on the section's carried upload.
+ *
+ * Only `html-to-pdf` does not: its input is a web address, so it stays
+ * selectable whatever the dropzone holds. `compare-pdf` does use them — it
+ * takes the first two.
+ */
+export function usesSectionFile(tool: Tool): boolean {
+  return tool.kind !== "url"
+}
+
+/** Takes anything with a `name`, so a Data Room selection (which is a name and
+ *  an id, never a `File`) is checked exactly like an upload. */
+export function toolFit(tool: Tool, files: { name: string }[]): ToolFit {
+  // Brings its own input, so the uploaded file is beside the point.
+  if (!usesSectionFile(tool)) return { ok: true }
+  // Nothing uploaded yet: every tool is still open, and the panel asks for the
+  // file rather than the rail refusing in advance.
+  if (files.length === 0) return { ok: true }
+
+  const allowed = tool.accept
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+  const typeOk = files.every((f) => allowed.some((ext) => f.name.toLowerCase().endsWith(ext)))
+  if (!typeOk) return { ok: false, reason: "format", formats: acceptedFormats(tool.accept) }
+
+  // Only too MANY is a mismatch. Compare PDF wants two files and will not run
+  // until it has both, but one is a perfectly good start — it opens on the
+  // left while you find the other, and the run button states what is missing.
+  if (tool.exactFiles && files.length > tool.exactFiles) {
+    return { ok: false, reason: "exact", need: tool.exactFiles }
+  }
+  if (!tool.multiple && files.length > 1) return { ok: false, reason: "single" }
+  return { ok: true }
 }

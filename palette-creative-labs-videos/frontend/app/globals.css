@@ -262,7 +262,7 @@
   --color-sidebar-ring: var(--plttsidebar-ring);
 
   --font-sans: var(--font-sans);
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, "Apple SD Gothic Neo", "Noto Sans KR", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans JP", monospace;
   --font-serif: var(--font-serif);
 
   --radius-sm: calc(var(--plttradius) - 4px);

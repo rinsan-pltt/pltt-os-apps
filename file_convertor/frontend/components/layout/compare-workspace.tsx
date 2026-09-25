@@ -26,11 +26,11 @@ import {
   type CompareHighlight,
   type CompareReport,
 } from "@/lib/api"
+import { type WorkspaceFileProps } from "@/hooks/use-workspace-files"
 import { useT, useRegistryText } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { Tool } from "@/lib/tools"
 
-const ACCEPT = ".pdf"
 const ZOOM_MIN = 0.2
 const ZOOM_MAX = 3
 const ZOOM_STEP = 0.15
@@ -53,12 +53,15 @@ interface PaneState {
 
 const EMPTY_PANE: PaneState = { file: null, pages: null, loading: false, error: null }
 
-function isPdf(f: File) {
-  return f.name.toLowerCase().endsWith(".pdf")
+/** Any document the tool takes — the backend renders non-PDFs to PDF before
+ *  drawing the pages, so a Word draft compares against its exported PDF. */
+function isAccepted(f: File, accept: string) {
+  const name = f.name.toLowerCase()
+  return accept.split(",").some((ext) => ext.trim() && name.endsWith(ext.trim().toLowerCase()))
 }
 
-/** Empty-pane dropzone: drag-and-drop or click to select a PDF. */
-function PaneDropzone({ onFile }: { onFile: (f: File) => void }) {
+/** Empty-pane dropzone: drag-and-drop or click to select a document. */
+function PaneDropzone({ accept, onFile }: { accept: string; onFile: (f: File) => void }) {
   const t = useT()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
@@ -73,7 +76,7 @@ function PaneDropzone({ onFile }: { onFile: (f: File) => void }) {
       onDrop={(e) => {
         e.preventDefault()
         setDragging(false)
-        const f = Array.from(e.dataTransfer.files).find(isPdf)
+        const f = Array.from(e.dataTransfer.files).find((file) => isAccepted(file, accept))
         if (f) onFile(f)
       }}
       className={cn(
@@ -84,11 +87,11 @@ function PaneDropzone({ onFile }: { onFile: (f: File) => void }) {
       <input
         ref={inputRef}
         type="file"
-        accept={ACCEPT}
+        accept={accept}
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f && isPdf(f)) onFile(f)
+          if (f && isAccepted(f, accept)) onFile(f)
           e.target.value = ""
         }}
       />
@@ -344,7 +347,11 @@ function OverlayPage({ srcA, srcB }: { srcA?: string; srcB?: string }) {
   return <canvas ref={canvasRef} className="mx-auto mb-3 block w-full rounded bg-white shadow" />
 }
 
-export function CompareWorkspace({ tool }: { tool: Tool }) {
+export function CompareWorkspace({
+  tool,
+  files: filesProp,
+  onFilesChange,
+}: { tool: Tool } & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
   const [a, setA] = React.useState<PaneState>(EMPTY_PANE)
@@ -427,7 +434,50 @@ export function CompareWorkspace({ tool }: { tool: Tool }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ---------------------------------------------------------------- section
+  //
+  // Compare is the one tool that holds TWO documents, so it stayed out of the
+  // section workspace's shared upload entirely — open it after dropping a file
+  // anywhere else in the category and both panes were empty, which is not what
+  // "the file follows you between tools" promises.
+  //
+  // The section's first file is the left pane and its second is the right,
+  // matched by identity so re-renders do not reload a document that is already
+  // on screen.
+  const sectionFiles = filesProp
+  React.useEffect(() => {
+    if (!sectionFiles) return
+    const [first, second] = sectionFiles
+    if (first && first !== a.file) loadFile("a", first)
+    else if (!first && a.file) setSide("a", EMPTY_PANE)
+    if (second && second !== b.file) loadFile("b", second)
+    else if (!second && b.file) setSide("b", EMPTY_PANE)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectionFiles])
+
+  // …and back the other way, driven by the two things that actually change a
+  // pane — a pick and a close — rather than by an effect watching pane state.
+  // An effect cannot distinguish "the panes have not been filled yet" from
+  // "the user emptied them", and on mount it read the first as the second and
+  // published an empty list over the section's file.
+  const publishPanes = React.useCallback(
+    (nextA: File | null, nextB: File | null) => {
+      if (!onFilesChange || !sectionFiles) return
+      const next = [nextA, nextB].filter((file): file is File => Boolean(file))
+      const same =
+        next.length === sectionFiles.length && next.every((file, i) => file === sectionFiles[i])
+      if (!same) onFilesChange(next)
+    },
+    [onFilesChange, sectionFiles],
+  )
+
+  const pickIntoPane = (side: Side, file: File) => {
+    loadFile(side, file)
+    publishPanes(side === "a" ? file : a.file, side === "b" ? file : b.file)
+  }
+
   const closeSide = (side: Side) => {
+    publishPanes(side === "a" ? null : a.file, side === "b" ? null : b.file)
     setSide(side, EMPTY_PANE)
     setReport(null)
     setReportError(null)
@@ -568,7 +618,7 @@ export function CompareWorkspace({ tool }: { tool: Tool }) {
               />
             ) : (
               <div className="flex min-h-64 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-muted/30 max-lg:h-[50vh]">
-                <PaneDropzone onFile={(f) => loadFile("a", f)} />
+                <PaneDropzone accept={tool.accept} onFile={(f) => pickIntoPane("a", f)} />
               </div>
             )}
             {b.file ? (
@@ -584,7 +634,7 @@ export function CompareWorkspace({ tool }: { tool: Tool }) {
               />
             ) : (
               <div className="flex min-h-64 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-muted/30 max-lg:h-[50vh]">
-                <PaneDropzone onFile={(f) => loadFile("b", f)} />
+                <PaneDropzone accept={tool.accept} onFile={(f) => pickIntoPane("b", f)} />
               </div>
             )}
           </>

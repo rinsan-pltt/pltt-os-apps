@@ -2,7 +2,7 @@
   "manifest_version": "1",
   "id": "file-handler-and-convertor",
   "name": "Document Toolbox",
-  "version": "0.0.0031",
+  "version": "0.0.0036",
   "data_scope": "organization",
   "developer": "General Purpose Application",
   "category": "General Apps",

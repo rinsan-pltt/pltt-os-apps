@@ -6,7 +6,7 @@ import { usePlatform } from "@palettelab/sdk";
 import { Badge, Button, Spinner } from "../ui/primitives";
 import { DocumentPageSheet } from "./document-page";
 import { getDocumentChunks, getDocumentPreview } from "../../lib/api-client";
-import { bytes, fileKind, shortDate, statusTone } from "../../lib/format";
+import { bytes, fileKind, shortDate, statusTone, useLocale } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import type { DocumentChunk, DocumentPreview, SourceDocument } from "../../lib/types";
@@ -40,6 +40,7 @@ export function DocumentViewer({
 }) {
   const { apiFetch } = usePlatform();
   const t = useT();
+  const locale = useLocale();
   const [chunks, setChunks] = useState<DocumentChunk[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
@@ -145,12 +146,12 @@ export function DocumentViewer({
                     chunks: doc.chunkCount,
                     pages: doc.pageCount,
                     size: bytes(doc.sizeBytes),
-                    date: shortDate(doc.createdAt),
+                    date: shortDate(doc.createdAt, locale),
                   })
                 : t("docViewer.metaNoPages", {
                     chunks: doc.chunkCount,
                     size: bytes(doc.sizeBytes),
-                    date: shortDate(doc.createdAt),
+                    date: shortDate(doc.createdAt, locale),
                   })}
             </p>
           </div>

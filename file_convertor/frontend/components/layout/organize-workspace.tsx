@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FileDropzone } from "@/components/layout/file-dropzone"
 import { downloadBlob, organizeApply, organizePreview, type OrganizePage } from "@/lib/api"
+import { useWorkspaceFiles, type WorkspaceFileProps } from "@/hooks/use-workspace-files"
 import { useT, useRegistryText } from "@/lib/i18n"
 import type { Tool } from "@/lib/tools"
 
@@ -21,40 +22,59 @@ interface Card_ {
   rotation: number
 }
 
-export function OrganizeWorkspace({ tool }: { tool: Tool }) {
+export function OrganizeWorkspace({
+  tool,
+  files: filesProp,
+  onFilesChange,
+  embedded,
+}: { tool: Tool } & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
-  const [files, setFiles] = React.useState<File[]>([])
+  const [files, setFiles] = useWorkspaceFiles(filesProp, onFilesChange)
   const [status, setStatus] = React.useState<Status>("idle")
   const [error, setError] = React.useState<string | null>(null)
   const [cards, setCards] = React.useState<Card_[]>([])
   const dragIndex = React.useRef<number | null>(null)
 
-  const loadFile = async (next: File[]) => {
-    setFiles(next)
+  // Keyed on the FILE, not on the dropzone's callback.
+  //
+  // The page thumbnails used to be fetched from inside `onFilesChange`, which
+  // meant they were only ever built for a file dropped on THIS screen. The
+  // section workspace supplies the file from its own upload bar, so the load
+  // has to follow the file wherever it came from.
+  const pdfFile = files[0] ?? null
+  React.useEffect(() => {
     setError(null)
-    if (next.length === 0) {
+    if (!pdfFile) {
       setStatus("idle")
       setCards([])
       return
     }
+    let cancelled = false
     setStatus("loading")
-    try {
-      const preview = await organizePreview(next[0])
-      setCards(
-        preview.pages.map((p: OrganizePage) => ({
-          key: `${p.index}`,
-          originalIndex: p.index,
-          thumbnail: p.thumbnail,
-          rotation: 0,
-        })),
-      )
-      setStatus("ready")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("organize.couldNotOpenPdf"))
-      setStatus("error")
+    organizePreview(pdfFile)
+      .then((preview) => {
+        if (cancelled) return
+        setCards(
+          preview.pages.map((p: OrganizePage) => ({
+            key: `${p.index}`,
+            originalIndex: p.index,
+            thumbnail: p.thumbnail,
+            rotation: 0,
+          })),
+        )
+        setStatus("ready")
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : t("organize.couldNotOpenPdf"))
+        setStatus("error")
+      })
+    return () => {
+      cancelled = true
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfFile])
 
   const rotate = (key: string) => {
     setCards((prev) => prev.map((c) => (c.key === key ? { ...c, rotation: (c.rotation + 90) % 360 } : c)))
@@ -107,7 +127,17 @@ export function OrganizeWorkspace({ tool }: { tool: Tool }) {
             <CardDescription>{reg.toolDescription(tool)}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <FileDropzone accept={tool.accept} multiple={false} files={files} onFilesChange={loadFile} disabled={status === "loading"} />
+            {/* The section workspace draws the upload for the whole category;
+                see the note in use-workspace-files.ts. */}
+            {!embedded && (
+              <FileDropzone
+                accept={tool.accept}
+                multiple={false}
+                files={files}
+                onFilesChange={setFiles}
+                disabled={status === "loading"}
+              />
+            )}
             {/* Rendering every page's thumbnail is slow on a long PDF; this
                 used to be a spinner with no progress bar. */}
             {status === "loading" && <BusyPanel label={t("organize.loadingThumbs")} />}
@@ -136,9 +166,13 @@ export function OrganizeWorkspace({ tool }: { tool: Tool }) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => loadFile([])} disabled={status === "applying"}>
-            <Upload className="size-4" /> {t("organize.chooseDifferent")}
-          </Button>
+          {/* Embedded, the file belongs to the section's upload bar — clearing
+              it from in here would empty a dropzone this screen doesn't own. */}
+          {!embedded && (
+            <Button variant="ghost" onClick={() => setFiles([])} disabled={status === "applying"}>
+              <Upload className="size-4" /> {t("organize.chooseDifferent")}
+            </Button>
+          )}
           <Button onClick={apply} disabled={status === "applying" || cards.length === 0}>
             {status === "applying" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
             {t("organize.saveDownload")}

@@ -13,3 +13,13 @@ python-pptx>=1.0
 pillow>=10.0
 pillow-heif>=0.16
 python-hwpx>=6.0
+# Unlock Document: removes the open-password from Word/Excel/PowerPoint files.
+msoffcrypto-tool>=5.4
+# Optional, and the code checks before using it: HTML to PDF renders with real
+# Chromium when this package AND a browser binary are present, which is the
+# only way a JavaScript-rendered page converts to what the reader sees. The
+# binary is a separate step the image must run:
+#     python -m playwright install chromium
+# Without it the tool falls back to fetch + LibreOffice and tells the user when
+# a page needed a browser it did not have.
+playwright>=1.44

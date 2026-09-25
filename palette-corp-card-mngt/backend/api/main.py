@@ -21,13 +21,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, text
 
 from palette_sdk import PluginContext, PluginRouter, get_plugin_context, require_permission
-from palette_sdk.services import BrokerCallError, services
+from palette_sdk.services import services
 from models import (
     ApprovalStep,
     CardStatementRow,
     CardStatementUpload,
     CorporateCard,
     ErpExport,
+    MemberLocality,
     PolicyQuestion,
     PolicyRule,
     PreSpendRequest,
@@ -88,6 +89,40 @@ LOCALITY_ALIASES = {
     "KOREA": "KR",
     "SOUTH KOREA": "KR",
     "REPUBLIC OF KOREA": "KR",
+}
+# Cities and the place-name half of an IANA timezone ("Asia/Seoul"), consulted
+# ONLY after every country name and code has failed to match. Two reasons this
+# is a separate table rather than more rows in the one above:
+#
+#   1. It is a guess. "Seoul" means the person is almost certainly in Korea;
+#      "KR" means they are. Keeping them apart lets an explicit country
+#      anywhere in a string beat a city inferred from the same string, so
+#      "India House, Seoul" resolves to IN rather than to whichever token the
+#      matcher happened to reach first.
+#   2. The resolved locality is shown on the claim ("Employee locality KR"), so
+#      a wrong guess is visible to the person filing rather than silent -- but
+#      it is still a guess, and worth reading as one.
+#
+# Names are matched as whole words after punctuation is stripped, which is what
+# makes the `timezone` field usable at last: "Asia/Kolkata" normalises to
+# "ASIA KOLKATA", and KOLKATA is below. Before this it matched nothing.
+LOCALITY_CITY_ALIASES = {
+    # KR
+    "SEOUL": "KR", "BUSAN": "KR", "PUSAN": "KR", "INCHEON": "KR", "DAEGU": "KR",
+    "DAEJEON": "KR", "GWANGJU": "KR", "ULSAN": "KR", "SEJONG": "KR", "SUWON": "KR",
+    "SEONGNAM": "KR", "BUNDANG": "KR", "PANGYO": "KR", "GANGNAM": "KR",
+    "YONGIN": "KR", "GOYANG": "KR", "ANYANG": "KR", "BUCHEON": "KR",
+    "CHEONGJU": "KR", "JEONJU": "KR", "POHANG": "KR", "CHANGWON": "KR", "JEJU": "KR",
+    # IN
+    "MUMBAI": "IN", "BOMBAY": "IN", "DELHI": "IN", "GURGAON": "IN", "GURUGRAM": "IN",
+    "NOIDA": "IN", "BENGALURU": "IN", "BANGALORE": "IN", "HYDERABAD": "IN",
+    "CHENNAI": "IN", "MADRAS": "IN", "KOLKATA": "IN", "CALCUTTA": "IN",
+    "PUNE": "IN", "AHMEDABAD": "IN", "JAIPUR": "IN", "KOCHI": "IN", "COCHIN": "IN",
+    "ERNAKULAM": "IN", "THIRUVANANTHAPURAM": "IN", "TRIVANDRUM": "IN",
+    "CHANDIGARH": "IN", "INDORE": "IN", "NAGPUR": "IN", "SURAT": "IN",
+    "LUCKNOW": "IN", "COIMBATORE": "IN", "VISAKHAPATNAM": "IN",
+    "BHUBANESWAR": "IN", "MYSURU": "IN", "MYSORE": "IN", "VADODARA": "IN",
+    "BARODA": "IN", "NASHIK": "IN", "GANDHINAGAR": "IN",
 }
 TAX_PROFILES = {
     "KRW": {"type": "VAT", "default_rate": 10.0, "allowed_rates": {0.0, 10.0}},
@@ -236,6 +271,24 @@ class PolicyQuestionIn(BaseModel):
     category: str | None = Field(default=None, max_length=80)
     domain: str = Field(default=POLICY_DOMAIN, max_length=80)
     country: str = Field(default=DEFAULT_COUNTRY, max_length=12)
+
+
+class MemberLocalityIn(BaseModel):
+    # Free text on purpose: "KR", "Korea", "Seoul", "Asia/Kolkata" all resolve
+    # through the same alias table the profile fields use. Empty clears it.
+    locality: str = Field(default="", max_length=160)
+
+
+class AssistantTurn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class AssistantIn(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    lang: str = Field(default="en", max_length=12)
+    # The last few turns, so follow-ups ("what about the second one?") resolve.
+    history: list[AssistantTurn] = Field(default_factory=list)
 
 
 class ApprovalPathRequest(BaseModel):
@@ -763,14 +816,24 @@ def _normalize_employee_locality(value: Any) -> str | None:
     compact = re.sub(r"\s+", " ", cleaned)
     if compact in LOCALITY_ALIASES:
         return LOCALITY_ALIASES[compact]
-    tokens = {token for token in compact.split(" ") if token}
-    for token in tokens:
-        if token in LOCALITY_ALIASES:
-            return LOCALITY_ALIASES[token]
+    # An ordered list, not a set: with a set, a string carrying two matchable
+    # words resolved to whichever one iteration happened to reach first, which
+    # is arbitrary. Reading left to right makes the answer reproducible.
+    words = [word for word in compact.split(" ") if word]
+    for word in words:
+        if word in LOCALITY_ALIASES:
+            return LOCALITY_ALIASES[word]
     if "SOUTH KOREA" in compact or "REPUBLIC OF KOREA" in compact:
         return "KR"
     if "INDIA" in compact:
         return "IN"
+    # Last resort. Every country name and code above has already failed, so a
+    # city is the only signal left.
+    if compact in LOCALITY_CITY_ALIASES:
+        return LOCALITY_CITY_ALIASES[compact]
+    for word in words:
+        if word in LOCALITY_CITY_ALIASES:
+            return LOCALITY_CITY_ALIASES[word]
     return None
 
 
@@ -799,10 +862,26 @@ def _member_locality(member: dict[str, Any] | None) -> str | None:
     return None
 
 
+async def _member_locality_overrides(ctx: PluginContext) -> dict[str, MemberLocality]:
+    rows = await ctx.repo(MemberLocality).list(limit=500)
+    # Newest row wins if a member somehow has more than one.
+    latest: dict[str, MemberLocality] = {}
+    for row in sorted(rows, key=lambda r: r.id):
+        latest[str(row.member_id)] = row
+    return latest
+
+
 async def _employee_locality(ctx: PluginContext, member_id: str) -> tuple[str | None, dict[str, Any] | None]:
     members = await _organization_members(ctx)
     member = _member_by_id(members, member_id)
-    return _member_locality(member), member
+    platform_locality = _member_locality(member)
+    if platform_locality:
+        return platform_locality, member
+    # The platform profile said nothing usable, so fall back to what an admin
+    # recorded in this app. Deliberately second: when the SDK starts carrying a
+    # country, it wins automatically and these rows stop mattering.
+    override = (await _member_locality_overrides(ctx)).get(str(member_id))
+    return (override.locality if override else None), member
 
 
 def _policy_profile_for_locality(locality: str | None) -> dict[str, str] | None:
@@ -1309,17 +1388,34 @@ def _acting_member_id(ctx: PluginContext, request: FastAPIRequest) -> str:
 
 
 def _current_user_as_member(ctx: PluginContext) -> list[dict[str, Any]]:
-    """Single-member roster for runtimes with no organisation member service."""
-    return [
-        {
-            "id": ctx.user_id,
-            "name": "Palette user",
-            "email": "",
-            "role": _normalized_app_role(ctx.org_role) if ctx.org_role else "owner",
-            "is_active": True,
-            "joined_at": datetime.now(UTC).isoformat(),
-        }
-    ]
+    """Single-member roster for runtimes with no organisation member service.
+
+    Only reached when the platform injected no member service at all -- the
+    `pltt dev` simulator. It cannot be reached from a real deployment: a missing
+    `members:read` permission raises PermissionError, which the caller does not
+    catch, and a live Palette OS always provides the service. That is what makes
+    it safe to invent a locality here.
+
+    Every other field on this row is already invented ("Palette user", no
+    email), and without a locality the policy gate blocks EVERY settlement, so
+    the submit flow cannot be exercised locally at all. Defaults to KR, matching
+    DEFAULT_COUNTRY and the KRW tax profile; set CORPORATE_CARD_DEV_LOCALITY=IN
+    to develop against the India rules instead, or to an unsupported value to
+    deliberately test the blocked path.
+    """
+    configured = os.environ.get("CORPORATE_CARD_DEV_LOCALITY")
+    locality = _normalize_employee_locality(DEFAULT_COUNTRY if configured is None else configured)
+    member = {
+        "id": ctx.user_id,
+        "name": "Palette user",
+        "email": "",
+        "role": _normalized_app_role(ctx.org_role) if ctx.org_role else "owner",
+        "is_active": True,
+        "joined_at": datetime.now(UTC).isoformat(),
+    }
+    if locality:
+        member["country_code"] = locality
+    return [member]
 
 
 def _safe_path_segment(value: Any) -> str:
@@ -2650,7 +2746,14 @@ async def _ask_policy_question(ctx: PluginContext, payload: PolicyQuestionIn) ->
             search_result = await services(ctx).call(POLICY_SEARCH_TARGET, broker_payload)
             if search_result:
                 broker_payload["search_results"] = search_result
-        except BrokerCallError as exc:
+        except Exception as exc:
+            # Not just BrokerCallError. `policy/v1#search` and `#ask` are declared
+            # optional in the manifest, and a host that does not provide them
+            # signals that however it likes -- the pltt dev broker raises a bare
+            # RuntimeError("No local broker mock configured for ..."), which is
+            # not a BrokerCallError and used to escape this whole function and
+            # 500 the request. Any failure of an optional service must degrade
+            # to the fallback chain below, never take the endpoint down.
             ctx.logger.warning("Policy broker search failed, continuing with ask: %s", exc)
         result = await services(ctx).call(POLICY_ASK_TARGET, broker_payload)
         if isinstance(result, dict):
@@ -2660,7 +2763,8 @@ async def _ask_policy_question(ctx: PluginContext, payload: PolicyQuestionIn) ->
                 return str(answer), str(source)
         elif result:
             return str(result), POLICY_ASK_TARGET
-    except BrokerCallError as exc:
+    except Exception as exc:
+        # Same reasoning as the search call above: degrade, do not raise.
         ctx.logger.warning("Policy broker ask failed, falling back: %s", exc)
 
     try:
@@ -2724,6 +2828,19 @@ async def members(ctx: PluginContext = Depends(get_plugin_context)) -> list[dict
     """
     roster = await _organization_members(ctx)
     enriched = _enrich_members_with_app_roles(roster, await _role_assignments(ctx))
+    overrides = await _member_locality_overrides(ctx)
+    for member in enriched:
+        platform_locality = _member_locality(member)
+        override = overrides.get(str(member.get("id") or ""))
+        member["locality_from_platform"] = platform_locality
+        member["locality_override"] = override.locality if override else None
+        member["locality_entered_value"] = override.entered_value if override else None
+        # What the policy engine will actually use, by the same order as
+        # _employee_locality(): profile first, app override second.
+        member["effective_locality"] = platform_locality or (override.locality if override else None)
+        member["locality_source"] = (
+            "platform" if platform_locality else ("app" if override else None)
+        )
     acting = _member_by_id(enriched, ctx.user_id)
     if acting is not None and str(acting.get("app_role") or "") == "viewer":
         return [acting]
@@ -2906,6 +3023,63 @@ async def monitoring(ctx: PluginContext = Depends(get_plugin_context)) -> dict[s
         statement_rows=statement_rows,
         pre_spend_requests=pre_spend_requests,
     )
+
+
+@router.put("/member-locality/{member_id}", dependencies=WRITE)
+async def set_member_locality(
+    member_id: str,
+    payload: MemberLocalityIn,
+    request: FastAPIRequest,
+    ctx: PluginContext = Depends(get_plugin_context),
+) -> dict[str, Any]:
+    """Record a work locality for a member, until the platform profile has one.
+
+    Admin-only, like role assignment: locality decides which tax and evidence
+    rules a person's spending is held to, so it is not a self-service field.
+    """
+    acting_member_id = _acting_member_id(ctx, request)
+    if not _can_manage_role_assignments(ctx, acting_member_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only organization admins can set a member locality")
+    members = await _organization_members(ctx)
+    if member_id not in {str(member.get("id") or "") for member in members}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found in this organization")
+
+    entered = (payload.locality or "").strip()
+    existing = (await _member_locality_overrides(ctx)).get(member_id)
+    if not entered:
+        if existing is not None:
+            await ctx.repo(MemberLocality).delete(existing.id)
+        return {"member_id": member_id, "locality": None, "entered_value": None}
+
+    resolved = _normalize_employee_locality(entered)
+    if not resolved:
+        supported = ", ".join(sorted(POLICY_PROFILES))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"'{entered}' is not a supported locality. Use a country code or name "
+                f"({supported}), or a city such as Seoul or Bengaluru."
+            ),
+        )
+    if existing is None:
+        row = await ctx.repo(MemberLocality).create(
+            member_id=member_id,
+            locality=resolved,
+            entered_value=entered,
+            set_by_member_id=acting_member_id,
+        )
+    else:
+        existing.locality = resolved
+        existing.entered_value = entered
+        existing.set_by_member_id = acting_member_id
+        await ctx.db.commit()
+        await ctx.db.refresh(existing)
+        row = existing
+    return {
+        "member_id": row.member_id,
+        "locality": row.locality,
+        "entered_value": row.entered_value,
+    }
 
 
 @router.post("/cards", dependencies=WRITE)
@@ -3914,6 +4088,236 @@ async def export_erp(
         "total_amount": total,
         "total_amount_cents": total,
         "csv": output.getvalue(),
+    }
+
+
+# The assistant's map of the product. It is written here, next to the routes
+# that implement each capability, so an added feature is one line away from
+# being something the assistant can tell a user about. Keep tab ids in step
+# with the frontend's `Tab` union -- they are what "open the X page" refers to.
+APP_CAPABILITIES = [
+    ("dashboard", "Dashboard", "Spend, pending approvals and shortcuts for the signed-in role."),
+    ("inbox", "Inbox", "Claims that need the user's attention: rejected, needs-info, policy-blocked."),
+    ("cards", "Cards", "Corporate card register: each card's monthly limit, this month's usage and status."),
+    ("submit", "Submit settlement", "File a settlement: upload a receipt, AI extracts the fields, then submit for approval."),
+    ("pre_spend", "Pre-spend approval", "Request approval BEFORE spending. Required for restricted categories."),
+    ("usage", "Usage overview", "Per-member and per-category usage against limits."),
+    ("monitoring", "Monitoring", "Finance control view: spend forecast, risk heatmap, evidence and ERP handoff."),
+    ("anomalies", "My anomalies", "Claims flagged against the user: duplicates, missing receipts, policy exceptions."),
+    ("history", "Settlement history", "Every settlement the user may see, with its approval trail."),
+    ("approvals", "Approval queue", "Approve or reject submitted settlements and inspect the approval path."),
+    ("analytics", "Statistics", "Category and lifecycle analysis of settlement spend."),
+    ("upload", "Card statement upload", "Upload an issuer statement and reconcile rows against claims."),
+    ("erp", "ERP export", "Export approved settlements to the accounting system."),
+    ("qa", "Q&A", "Ask corporate-card policy questions; answers are logged for the organization."),
+    ("members", "Org members", "Members, app roles and card assignment."),
+]
+
+
+def _assistant_capability_text() -> str:
+    return "\n".join(f"- {label} (tab id: {tab}): {desc}" for tab, label, desc in APP_CAPABILITIES)
+
+
+async def _assistant_workspace_facts(ctx: PluginContext, acting_member_id: str) -> list[str]:
+    """A compact, factual snapshot the assistant may quote.
+
+    Only figures the app already computes for its own screens -- the assistant
+    must be able to say "3 cards are over limit" because that is true of this
+    workspace right now, not because it sounded plausible.
+    """
+    cards = await ctx.repo(CorporateCard).list(order_by="member_name", limit=500)
+    claims = await _claims(ctx)
+    pre_spend = await _pre_spend_requests(ctx)
+    statement_rows = await _statement_rows(ctx)
+
+    period = datetime.now(UTC).strftime("%Y-%m")
+    spend_by_last4: dict[str, int] = {}
+    for claim in claims:
+        if not str(getattr(claim, "transaction_date", "") or "").startswith(period):
+            continue
+        last4 = str(getattr(claim, "card_last4", "") or "").strip()[-4:]
+        if last4:
+            spend_by_last4[last4] = spend_by_last4.get(last4, 0) + int(claim.amount_cents or 0)
+
+    over, near = [], []
+    total_limit = 0
+    for card in cards:
+        limit = int(card.monthly_limit_cents or 0)
+        total_limit += limit
+        if limit <= 0:
+            continue
+        used = spend_by_last4.get(str(card.last4 or "").strip()[-4:], 0)
+        pct = round(used / limit * 100)
+        if pct >= 100:
+            over.append(f"{card.member_name} (****{card.last4}) at {pct}%")
+        elif pct >= 80:
+            near.append(f"{card.member_name} (****{card.last4}) at {pct}%")
+
+    pending = [c for c in claims if c.state == "pending"]
+    steps_by_claim = await _steps_for_claims(ctx, [c.id for c in pending])
+    mine = sum(
+        1
+        for c in pending
+        if any(
+            s.state == "pending" and str(s.approver_member_id or "") == str(acting_member_id)
+            for s in steps_by_claim.get(c.id, [])
+        )
+    )
+
+    facts = [
+        f"Current period: {period}.",
+        f"Registered cards: {len(cards)} ({sum(1 for c in cards if c.status == 'active')} active).",
+        f"Combined monthly limit: {total_limit}.",
+        f"Settlement claims: {len(claims)} total, {len(pending)} pending, "
+        f"{sum(1 for c in claims if c.state == 'approved')} approved, "
+        f"{sum(1 for c in claims if c.state == 'rejected')} rejected.",
+        f"Settlements waiting on THIS user's decision: {mine}.",
+        f"Pre-spend requests pending: {sum(1 for p in pre_spend if p.state == 'pending')}.",
+        f"Statement rows needing a claim: {sum(1 for r in statement_rows if r.match_status in STATEMENT_NEEDS_CLAIM_STATUSES)}.",
+        f"Policy-blocked claims: {sum(1 for c in claims if c.policy_status == 'blocked')}.",
+    ]
+    facts.append(f"Cards over their limit: {'; '.join(over) if over else 'none'}.")
+    facts.append(f"Cards at 80-99% of limit: {'; '.join(near) if near else 'none'}.")
+    return facts
+
+
+def _pick_lang(lang: str, en: str, ko: str, ja: str) -> str:
+    """Choose the UI string for the Palette OS language (ko / ja, else English)."""
+    if lang == "ko":
+        return ko
+    if lang == "ja":
+        return ja
+    return en
+
+
+def _assistant_offline_answer(question: str, facts: list[str], lang: str) -> str:
+    """Answer without an LLM, from the capability map and the live figures.
+
+    The assistant is meant to be useful on a machine with no model configured,
+    so this is a real fallback rather than an apology: it routes the user to
+    the right screen and quotes the numbers that screen would show.
+    """
+    q = question.lower()
+    hits = [
+        (label, desc)
+        for _tab, label, desc in APP_CAPABILITIES
+        if label.lower() in q or any(w in q for w in label.lower().split())
+    ]
+    keyword_map = [
+        (("approve", "approval", "sign off", "결재", "승인", "承認", "決裁"), "Approval queue"),
+        (("submit", "file", "claim", "expense", "정산", "精算", "経費"), "Submit settlement"),
+        (("card", "limit", "카드", "한도", "カード", "限度"), "Cards"),
+        (("receipt", "evidence", "영수증", "領収書", "証憑"), "Submit settlement"),
+        (("statement", "reconcile", "명세", "明細", "照合"), "Card statement upload"),
+        (("export", "erp", "accounting", "会計"), "ERP export"),
+        (("policy", "rule", "allowed", "규정", "規程", "ポリシー"), "Q&A"),
+        (("pre-spend", "pre spend", "before", "사전", "事前"), "Pre-spend approval"),
+    ]
+    if not hits:
+        for words, label in keyword_map:
+            if any(w in q for w in words):
+                hits = [(label, next(d for _t, l, d in APP_CAPABILITIES if l == label))]
+                break
+
+    lines: list[str] = []
+    if hits:
+        label, desc = hits[0]
+        lines.append(
+            _pick_lang(
+                lang,
+                f"Open **{label}** — {desc}",
+                f"**{label}** 화면에서 처리할 수 있습니다 — {desc}",
+                f"**{label}** 画面で対応できます — {desc}",
+            )
+        )
+    else:
+        lines.append(
+            _pick_lang(
+                lang,
+                "Here is what this workspace can do:",
+                "이 워크스페이스에서 할 수 있는 일입니다:",
+                "このワークスペースでできることは次のとおりです:",
+            )
+        )
+        lines += [f"- {label}: {desc}" for _t, label, desc in APP_CAPABILITIES[:6]]
+    lines.append("")
+    lines.append(_pick_lang(lang, "Right now:", "현재 상태:", "現在の状況:"))
+    lines += [f"- {f}" for f in facts[:6]]
+    lines.append("")
+    lines.append(
+        _pick_lang(
+            lang,
+            "(No language model is configured, so this answer comes from the app's own data.)",
+            "(언어 모델이 설정되지 않아 앱 데이터 기준으로 답변했습니다.)",
+            "(言語モデルが設定されていないため、アプリのデータに基づいて回答しました。)",
+        )
+    )
+    return "\n".join(lines)
+
+
+@router.post("/assistant", dependencies=READ)
+async def assistant(
+    payload: AssistantIn,
+    request: FastAPIRequest,
+    ctx: PluginContext = Depends(get_plugin_context),
+) -> dict[str, Any]:
+    """In-app assistant: answers about this app's features AND this workspace.
+
+    Read-only by design. It explains and points at screens; it never files,
+    approves or exports anything on the user's behalf, so a wrong answer costs
+    a wasted click rather than a wrong settlement.
+    """
+    acting_member_id = _acting_member_id(ctx, request)
+    try:
+        facts = await _assistant_workspace_facts(ctx, acting_member_id)
+    except Exception as exc:  # a broken figure must not take the assistant down
+        ctx.logger.warning("Assistant workspace snapshot failed: %s", exc)
+        facts = []
+
+    system = (
+        "You are the assistant built into the Palette corporate-card app. "
+        "Answer ONLY about this app and the workspace data given below.\n\n"
+        "Screens available to the user:\n" + _assistant_capability_text() + "\n\n"
+        "Live workspace facts (authoritative -- prefer these over any assumption):\n"
+        + "\n".join(f"- {f}" for f in facts)
+        + "\n\nRules: be concise, 120 words or fewer unless asked for detail. "
+        "When a task belongs to a screen, name that screen exactly as written above. "
+        "Quote the figures above rather than estimating. If the answer is not in "
+        "the app or the facts, say so plainly and suggest the closest screen. "
+        "Never invent card numbers, amounts, people or approvals. "
+        "Do not claim to have performed an action -- you can explain and point, not act."
+        + _pick_lang(payload.lang, "\nReply in English.", "\nReply in Korean.", "\nReply in Japanese.")
+    )
+    transcript = "\n".join(
+        f"{turn.role.upper()}: {turn.content}" for turn in payload.history[-8:]
+    )
+    user_content = (f"{transcript}\nUSER: {payload.question}" if transcript else payload.question)
+
+    try:
+        answer, source, model = await _llm_chat_text(
+            ctx,
+            system=system,
+            user_content=user_content,
+            router_model=(
+                _config_value(ctx, "LLM_ROUTER_FAST_MODEL")
+                or _config_value(ctx, "LLM_ROUTER_TEXT_MODEL")
+                or "text_fast"
+            ),
+            json_object=False,
+            purpose="assistant",
+        )
+    except HTTPException as exc:
+        ctx.logger.warning("Assistant LLM unavailable, answering locally: %s", exc.detail)
+    except Exception as exc:
+        ctx.logger.warning("Assistant LLM failed, answering locally: %s", exc)
+    else:
+        if answer.strip():
+            return {"answer": answer.strip(), "source": source, "model": model}
+
+    return {
+        "answer": _assistant_offline_answer(payload.question, facts, payload.lang),
+        "source": "local_app_context",
+        "model": None,
     }
 
 

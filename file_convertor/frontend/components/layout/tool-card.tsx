@@ -77,8 +77,15 @@ const ICONS: Record<string, LucideIcon> = {
   Wrench,
 }
 
+/** The lucide icon a tool declares, resolved against the map above.
+ *  Exported because the section workspace's tool rail shows the same icons as
+ *  these cards, and two copies of the map would drift apart. */
+export function toolIcon(tool: Tool): LucideIcon {
+  return ICONS[tool.icon] ?? FileText
+}
+
 export function ToolCard({ tool }: { tool: Tool }) {
-  const Icon = ICONS[tool.icon] ?? FileText
+  const Icon = toolIcon(tool)
   const t = useT()
   const reg = useRegistryText()
   const to = OUTPUT_FORMAT[tool.slug]
@@ -91,6 +98,7 @@ export function ToolCard({ tool }: { tool: Tool }) {
     <Link
       href={toolHref(tool.slug)}
       draggable={false}
+      data-tool-card
       className={cn(
         // `h-full` fills the grid cell. Without it the link shrank to its own
         // content and a card with a shorter icon row (a 28px format pair
@@ -103,7 +111,9 @@ export function ToolCard({ tool }: { tool: Tool }) {
         // stops for anyone who has asked for that.
         "transition-[transform,border-color,box-shadow] duration-[var(--dt-dur-fast)] ease-[var(--dt-ease-out)]",
         "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--dt-shadow-md)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        // Keyboard focus looks like hover — the same lift and border — rather
+        // than an extra ring box around the card.
+        "focus-visible:outline-none focus-visible:-translate-y-0.5 focus-visible:border-primary/60 focus-visible:shadow-[var(--dt-shadow-md)]",
       )}
     >
       {/* A fixed-height band, because the two icon styles are different sizes:

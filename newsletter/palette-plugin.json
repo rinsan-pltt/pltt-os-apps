@@ -2,7 +2,7 @@
   "manifest_version": "1",
   "id": "newsletter",
   "name": "Newsletter Studio",
-  "version": "1.0.137",
+  "version": "1.0.139",
   "developer": "Your Team",
   "category": "Productivity",
   "data_scope": "organization",

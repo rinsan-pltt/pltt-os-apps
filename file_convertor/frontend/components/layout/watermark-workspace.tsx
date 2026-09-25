@@ -6,6 +6,7 @@ import { Loader2, RefreshCw } from "lucide-react"
 import { Alert } from "@/components/ui/alert"
 import { BusyPanel } from "@/components/ui/busy-panel"
 import { Button } from "@/components/ui/button"
+import { PanelContent, PanelShell } from "@/components/ui/panel-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ResizeHandle } from "@/components/ui/resize-handle"
@@ -13,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { FileDropzone } from "@/components/layout/file-dropzone"
 import { downloadBlob, organizePreview, runTool, type OrganizePreview } from "@/lib/api"
 import { useRegistryText } from "@/lib/i18n"
+import { useWorkspaceFiles, type WorkspaceFileProps } from "@/hooks/use-workspace-files"
 import { useT } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { Tool } from "@/lib/tools"
@@ -41,10 +43,15 @@ function measureTextWidth(text: string): number {
   return Math.max(1, ctx.measureText(text || " ").width)
 }
 
-export function WatermarkWorkspace({ tool }: { tool: Tool }) {
+export function WatermarkWorkspace({
+  tool,
+  files: filesProp,
+  onFilesChange,
+  embedded,
+}: { tool: Tool } & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
-  const [files, setFiles] = React.useState<File[]>([])
+  const [files, setFiles] = useWorkspaceFiles(filesProp, onFilesChange)
 
   const [preview, setPreview] = React.useState<OrganizePreview | null>(null)
   const [previewLoading, setPreviewLoading] = React.useState(false)
@@ -74,6 +81,11 @@ export function WatermarkWorkspace({ tool }: { tool: Tool }) {
       setPageSize(null)
       return
     }
+    // A file can now arrive from the section workspace's upload bar instead of
+    // this screen's dropzone, so the reset that used to sit in the dropzone
+    // handler has to hang off the file itself — otherwise swapping the
+    // document up there leaves the previous run's alert on screen.
+    setStatus("idle")
     let cancelled = false
     setPreviewLoading(true)
     setPreviewError(null)
@@ -184,23 +196,31 @@ export function WatermarkWorkspace({ tool }: { tool: Tool }) {
   const cy = viewH / 2
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">{reg.toolTitle(tool)}</CardTitle>
-          <CardDescription>{reg.toolDescription(tool)}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <FileDropzone
-            accept={tool.accept}
-            multiple={false}
-            files={files}
-            onFilesChange={(next) => {
-              setFiles(next)
-              setStatus("idle")
-            }}
-            disabled={status === "working"}
-          />
+    <div className={cn("w-full min-w-0 max-w-2xl space-y-6", !embedded && "mx-auto")}>
+      <PanelShell embedded={embedded}>
+        {/* Embedded, the section workspace states the tool's name and what it
+            does above the panel — this header would be the second copy. */}
+        {!embedded && (
+          <CardHeader>
+            <CardTitle className="text-xl">{reg.toolTitle(tool)}</CardTitle>
+            <CardDescription>{reg.toolDescription(tool)}</CardDescription>
+          </CardHeader>
+        )}
+        <PanelContent embedded={embedded} className="space-y-6">
+          {/* The section workspace draws the upload for the whole category;
+              see the note in use-workspace-files.ts. */}
+          {!embedded && (
+            <FileDropzone
+              accept={tool.accept}
+              multiple={false}
+              files={files}
+              onFilesChange={(next) => {
+                setFiles(next)
+                setStatus("idle")
+              }}
+              disabled={status === "working"}
+            />
+          )}
 
           {previewError && (
             <Alert tone="error">{previewError}</Alert>
@@ -407,8 +427,8 @@ export function WatermarkWorkspace({ tool }: { tool: Tool }) {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </PanelShell>
     </div>
   )
 }

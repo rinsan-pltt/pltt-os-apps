@@ -6,78 +6,116 @@ import {
   CheckCircle2,
   Copy,
   Download,
-  FileText,
   Loader2,
   RefreshCw,
   Sparkles,
-  TriangleAlert,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Alert } from "@/components/ui/alert"
 import { BusyPanel } from "@/components/ui/busy-panel"
 import { Button } from "@/components/ui/button"
+import { PanelContent, PanelShell } from "@/components/ui/panel-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Select } from "@/components/ui/select"
+import { DocumentChat } from "@/components/layout/document-chat"
 import { FileDropzone } from "@/components/layout/file-dropzone"
+import { buildPagesMarkup, fitPagesToWidth, pagesToExportHtml } from "@/components/layout/edit-workspace"
+import { useWorkspaceFiles, type WorkspaceFileProps } from "@/hooks/use-workspace-files"
+import { cn } from "@/lib/utils"
 import { useT, useRegistryText } from "@/lib/i18n"
 import {
-  exportAiText,
+  exportEditedHtml,
   proofreadDocument,
-  summarizeDocument,
+  type ExtractedPage,
   type ProofreadResult,
-  type SummarizeResult,
 } from "@/lib/api"
 import type { Tool } from "@/lib/tools"
 
 type Status = "idle" | "working" | "done" | "error"
 
-function ExportBar({ text, basename }: { text: string; basename: string }) {
+/**
+ * The corrected document drawn exactly as the editor draws it — same pages,
+ * same positions, same fonts — read-only. The old preview was the corrected
+ * plain text, which is why the layout looked lost.
+ */
+function CorrectedPreview({ pages }: { pages: ExtractedPage[] }) {
   const t = useT()
+  const frameRef = React.useRef<HTMLDivElement>(null)
+  const pagesRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const root = pagesRef.current
+    const frame = frameRef.current
+    if (!root || !frame) return
+    root.innerHTML = buildPagesMarkup(pages, t)
+    fitPagesToWidth(root, frame)
+    if (typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(() => fitPagesToWidth(root, frame))
+    ro.observe(frame)
+    return () => ro.disconnect()
+  }, [pages, t])
+
+  return (
+    <div ref={frameRef} className="max-h-[70vh] overflow-y-auto rounded-lg border bg-muted/60 px-3 py-4">
+      <div ref={pagesRef} aria-label={t("ai.correctedDoc")} />
+    </div>
+  )
+}
+
+/** Download the corrected pages in the document's own format (and as PDF),
+ *  through the same exporter the editor uses — so a .docx comes back a .docx
+ *  with its layout, not a text dump. */
+function CorrectedDownload({ pages, text, filename }: { pages: ExtractedPage[]; text: string; filename: string }) {
+  const t = useT()
+  const [busy, setBusy] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
-  const [exporting, setExporting] = React.useState<"pdf" | "txt" | null>(null)
-  const [exportError, setExportError] = React.useState<string | null>(null)
+  const ext = (filename.split(".").pop() ?? "pdf").toLowerCase()
+  const original = ext === "hwp" ? "hwpx" : ext
+  const formats = original === "pdf" ? ["pdf"] : [original, "pdf"]
+  const basename = filename.replace(/\.[^.]+$/, "")
 
-  const copy = async () => {
+  const download = async (format: string) => {
+    setBusy(format)
+    setError(null)
     try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      setExportError(t("ai.couldNotCopy"))
-    }
-  }
-
-  const doExport = async (format: "pdf" | "txt") => {
-    setExporting(format)
-    setExportError(null)
-    try {
-      await exportAiText(text, format, basename)
+      await exportEditedHtml(pagesToExportHtml(pages), format, `${basename}_corrected`)
     } catch (e) {
-      setExportError(e instanceof Error ? e.message : t("common.exportFailed"))
+      setError(e instanceof Error ? e.message : t("common.exportFailed"))
     } finally {
-      setExporting(null)
+      setBusy(null)
     }
   }
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={copy}>
+      <div className="flex flex-wrap gap-2">
+        {formats.map((format, i) => (
+          <Button
+            key={format}
+            size="sm"
+            variant={i === 0 ? "default" : "outline"}
+            disabled={busy !== null}
+            onClick={() => void download(format)}
+          >
+            {busy === format ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            {t("ai.downloadAs", { format: format.toUpperCase() })}
+          </Button>
+        ))}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={async () => {
+            await navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
+          }}
+        >
           {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
           {copied ? t("ai.copied") : t("ai.copy")}
         </Button>
-        <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => doExport("pdf")}>
-          {exporting === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-          {t("ai.exportPdf")}
-        </Button>
-        <Button variant="outline" size="sm" disabled={exporting !== null} onClick={() => doExport("txt")}>
-          {exporting === "txt" ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
-          {t("ai.exportTxt")}
-        </Button>
       </div>
-      {exportError && <p className="text-xs text-destructive">{exportError}</p>}
+      {error && <Alert tone="error">{error}</Alert>}
     </div>
   )
 }
@@ -89,36 +127,41 @@ const FIX_BADGE: Record<string, string> = {
   clarity: "border-emerald-300 text-emerald-600 dark:text-emerald-400",
 }
 
-export function AiWorkspace({ tool }: { tool: Tool }) {
+export function AiWorkspace({
+  tool,
+  files: filesProp,
+  onFilesChange,
+  embedded,
+}: { tool: Tool } & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
   const isSummarize = tool.slug === "summarize-document"
-  const [files, setFiles] = React.useState<File[]>([])
-  const [length, setLength] = React.useState("medium")
+  const [files, setFiles] = useWorkspaceFiles(filesProp, onFilesChange)
   const [status, setStatus] = React.useState<Status>("idle")
   const [error, setError] = React.useState<string | null>(null)
-  const [summary, setSummary] = React.useState<SummarizeResult | null>(null)
   const [proofread, setProofread] = React.useState<ProofreadResult | null>(null)
 
   const reset = () => {
     setStatus("idle")
     setError(null)
-    setSummary(null)
     setProofread(null)
   }
+
+  // The file can also change from the section workspace's upload bar, which
+  // never runs the dropzone handler — so the same reset hangs off the file.
+  const stagedFile = files[0]
+  React.useEffect(() => {
+    if (status !== "working") reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stagedFile])
 
   const run = async () => {
     if (files.length === 0) return
     setStatus("working")
     setError(null)
-    setSummary(null)
     setProofread(null)
     try {
-      if (isSummarize) {
-        setSummary(await summarizeDocument(files[0], length))
-      } else {
-        setProofread(await proofreadDocument(files[0]))
-      }
+      setProofread(await proofreadDocument(files[0]))
       setStatus("done")
     } catch (e) {
       setError(e instanceof Error ? e.message : t("ai.requestFailed"))
@@ -126,51 +169,49 @@ export function AiWorkspace({ tool }: { tool: Tool }) {
     }
   }
 
-  const basename = (files[0]?.name ?? "document").replace(/\.[^.]+$/, "")
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">{reg.toolTitle(tool)}</CardTitle>
-          <CardDescription>{reg.toolDescription(tool)}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <FileDropzone
-            accept={tool.accept}
-            multiple={false}
-            files={files}
-            onFilesChange={(next) => {
-              setFiles(next)
-              if (status !== "working") reset()
-            }}
-            disabled={status === "working"}
-          />
-
-          {isSummarize && (
-            <div className="grid gap-1.5">
-              <Label htmlFor="opt-length">{t("ai.summaryLength")}</Label>
-              <Select
-                id="opt-length"
-                value={length}
-                onChange={(e) => setLength(e.target.value)}
-                disabled={status === "working"}
-              >
-                <option value="short">{t("ai.lengthShort")}</option>
-                <option value="medium">{t("ai.lengthMedium")}</option>
-                <option value="detailed">{t("ai.lengthDetailed")}</option>
-              </Select>
-            </div>
+    // The summarizer's chat spans the same width as the upload above it; the
+    // proofreader keeps the reading measure for its fix list.
+    <div className={cn("w-full min-w-0 space-y-6", !isSummarize && "max-w-3xl", !embedded && "mx-auto")}>
+      <PanelShell embedded={embedded}>
+        {/* Embedded, the section workspace states the tool's name and what it
+            does above the panel — this header would be the second copy. */}
+        {!embedded && (
+          <CardHeader>
+            <CardTitle className="text-xl">{reg.toolTitle(tool)}</CardTitle>
+            <CardDescription>{reg.toolDescription(tool)}</CardDescription>
+          </CardHeader>
+        )}
+        <PanelContent embedded={embedded} className="space-y-6">
+          {/* The section workspace draws the upload for the whole category;
+              see the note in use-workspace-files.ts. */}
+          {!embedded && (
+            <FileDropzone
+              accept={tool.accept}
+              multiple={false}
+              files={files}
+              onFilesChange={(next) => {
+                setFiles(next)
+                if (status !== "working") reset()
+              }}
+              disabled={status === "working"}
+            />
           )}
+
+          {/* The summarizer is a chat about the file: its summary lengths
+              are suggestion chips there, and any question can be asked. */}
+          {isSummarize && files[0] && <DocumentChat tool={tool} file={files[0]} />}
 
           {status === "error" && error && (
             <Alert tone="error">{error}</Alert>
           )}
 
           {status === "working" && (
-            <BusyPanel label={isSummarize ? t("ai.summarizing") : t("ai.checking")} />
+            <BusyPanel label={t("ai.checking")} />
           )}
 
+          {!isSummarize && (
           <div className="flex items-center gap-3">
             <Button
               size="lg"
@@ -181,7 +222,7 @@ export function AiWorkspace({ tool }: { tool: Tool }) {
               {status === "working" ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  {isSummarize ? t("ai.summarizing") : t("ai.checking")}
+                  {t("ai.checking")}
                 </>
               ) : (
                 <>
@@ -203,28 +244,9 @@ export function AiWorkspace({ tool }: { tool: Tool }) {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
-
-      {summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Sparkles className="size-5 text-purple-500" /> {t("ai.summary")}
-            </CardTitle>
-            <CardDescription>
-              {summary.filename} · {summary.model}
-              {summary.truncated && ` · ${t("ai.truncatedModelLimit")}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
-              {summary.summary}
-            </div>
-            <ExportBar text={summary.summary} basename={`${basename}_summary`} />
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </PanelContent>
+      </PanelShell>
 
       {proofread && (
         <>
@@ -243,11 +265,14 @@ export function AiWorkspace({ tool }: { tool: Tool }) {
             {proofread.fix_count > 0 && (
               <CardContent>
                 <ul className="space-y-3">
-                  {proofread.fixes.map((fix, i) => (
+                  {proofread.fixes.filter((fix) => fix.applied !== false).map((fix, i) => (
                     <li key={i} className="rounded-lg border p-3 text-sm">
                       <div className="mb-1.5 flex items-center gap-2">
                         <Badge className={FIX_BADGE[fix.type] ?? ""}>{t(`ai.fixType.${fix.type}`, undefined, fix.type)}</Badge>
-                        <span className="text-xs text-muted-foreground">{fix.explanation}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {fix.page ? `${t("ai.onPage", { n: fix.page })} · ` : ""}
+                          {fix.explanation}
+                        </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded bg-rose-50 px-1.5 py-0.5 text-rose-700 line-through dark:bg-rose-950 dark:text-rose-300">
@@ -270,10 +295,12 @@ export function AiWorkspace({ tool }: { tool: Tool }) {
               <CardTitle className="text-lg">{t("ai.correctedDoc")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed">
-                {proofread.corrected_text}
-              </div>
-              <ExportBar text={proofread.corrected_text} basename={`${basename}_corrected`} />
+              <CorrectedPreview pages={proofread.pages} />
+              <CorrectedDownload
+                pages={proofread.pages}
+                text={proofread.corrected_text}
+                filename={proofread.filename}
+              />
             </CardContent>
           </Card>
         </>

@@ -1,13 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { FileText, FileUp, Plus, X } from "lucide-react"
+import { FileText, FileUp, Plus, RefreshCw, X } from "lucide-react"
 
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/sheet"
 import { useT } from "@/lib/i18n"
-import { acceptedFormats } from "@/lib/tools"
+import { formatSummary } from "@/lib/tools"
 import { cn, formatBytes } from "@/lib/utils"
 
 /** Matches MAX_UPLOAD_BYTES in backend/api/core/files.py. Checked here so a
@@ -25,6 +25,14 @@ interface FileDropzoneProps {
   /** Stop accepting files once this many are uploaded (e.g. Compare PDF
    *  needs exactly 2) — the drop area and "Add more" hide once reached. */
   maxFiles?: number
+  /** Once a file is loaded, trade the large drop target for a slim row.
+   *
+   *  The section workspace shows the upload above the tool's own controls, and
+   *  a 290px dashed rectangle sitting there permanently made the file the
+   *  loudest thing on a screen whose subject is the tool. Empty, it still
+   *  opens at full size — there is nothing else to look at yet. Dropping onto
+   *  the row keeps working either way. */
+  compactWhenFilled?: boolean
 }
 
 export function FileDropzone({
@@ -35,11 +43,18 @@ export function FileDropzone({
   disabled,
   capture,
   maxFiles,
+  compactWhenFilled,
 }: FileDropzoneProps) {
   const t = useT()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = React.useState(false)
   const atCapacity = maxFiles !== undefined && files.length >= maxFiles
+  const collapsed = Boolean(compactWhenFilled) && files.length > 0
+
+  const accepted = React.useMemo(() => {
+    const { shown, more } = formatSummary(accept)
+    return more > 0 ? `${shown} ${t("dropzone.andMore", { count: more })}` : shown
+  }, [accept, t])
 
   const allowedExts = React.useMemo(
     () => accept.split(",").map((e) => e.trim().toLowerCase()),
@@ -114,7 +129,23 @@ export function FileDropzone({
 
   return (
     <div className="space-y-3">
-      {!atCapacity && (
+      {/* Kept outside the drop target: collapsed mode does not render that
+          element, and the Replace button still has to be able to open it. */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        capture={capture ? "environment" : undefined}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files)
+          e.target.value = ""
+        }}
+      />
+      {!atCapacity && !collapsed && (
         <div
           role="button"
           tabIndex={0}
@@ -151,25 +182,16 @@ export function FileDropzone({
           <div>
             <div className="text-ui font-medium text-foreground">{dropLabel}</div>
             {/* Format names, not an extension list: "PDF, DOCX" reads;
-                ".pdf, .doc, .docx, .odt, .rtf" is noise the user has to parse. */}
+                ".pdf, .doc, .docx, .odt, .rtf" is noise the user has to parse.
+                Capped, too: a section workspace accepts everything its tools
+                do between them, and Convert PDF's twenty formats wrapped to
+                two full lines of chips that nobody reads. The rest are still
+                accepted — the count says so, and the file picker enforces the
+                real list. */}
             <div className="mt-1 text-caption text-muted-foreground">
-              {t("dropzone.accepted", { exts: acceptedFormats(accept).join(" · ") })}
+              {t("dropzone.accepted", { exts: accepted })}
             </div>
           </div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept={accept}
-            multiple={multiple}
-            capture={capture ? "environment" : undefined}
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden
-            onChange={(e) => {
-              if (e.target.files) addFiles(e.target.files)
-              e.target.value = ""
-            }}
-          />
         </div>
       )}
 
@@ -216,7 +238,20 @@ export function FileDropzone({
               </Sheet>
             </li>
           ))}
-          {multiple && !atCapacity && (
+          {collapsed && !atCapacity && (
+            <li className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => inputRef.current?.click()}
+                disabled={disabled}
+              >
+                {multiple ? <Plus className="size-4" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
+                {multiple ? t("common.addMoreFiles") : t("dropzone.replaceFile")}
+              </Button>
+            </li>
+          )}
+          {!collapsed && multiple && !atCapacity && (
             <li>
               <Button
                 variant="outline"

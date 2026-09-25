@@ -2,7 +2,7 @@
   "manifest_version": "1",
   "id": "expense-receipt-tracker",
   "name": "Expense & Receipt Tracker",
-  "version": "0.0.0023",
+  "version": "0.0.0025",
   "developer": "Your Team",
   "category": "Finance",
   "data_scope": "organization",

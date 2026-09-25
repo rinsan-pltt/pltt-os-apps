@@ -65,11 +65,12 @@
      than a webfont: the plugin renders sandboxed, has no public/ directory to
      serve from, and the manifest's external_network allowance covers the
      backend only — a Google Fonts link could be blocked by a host CSP and fail
-     silently. The Korean faces are listed so `ko` gets a deliberate face too
-     instead of falling through to a serif.                                */
+     silently. The Korean and Japanese faces are listed so `ko` and `ja` get a
+     deliberate face too instead of falling through to a serif.      */
   --erx-font-sans:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR",
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans JP",
     "Noto Sans", sans-serif;
   /* Amounts are the content of this product. Tabular figures keep columns
      aligned; slashed zero stops 0/O ambiguity on a receipt total. */

@@ -7,7 +7,7 @@ import { Badge } from "../ui/primitives";
 import { ConfirmModal } from "../ui/confirm-modal";
 import { deleteDocument } from "../../lib/api-client";
 import { cn } from "../../lib/cn";
-import { bytes, fileKind, shortDate, statusTone } from "../../lib/format";
+import { bytes, fileKind, shortDate, statusTone, useLocale } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import type { SourceDocument } from "../../lib/types";
 
@@ -31,6 +31,7 @@ export function DocumentCard({
 }) {
   const { apiFetch } = usePlatform();
   const t = useT();
+  const locale = useLocale();
   const busy = doc.status === "parsing" || doc.status === "embedding";
   const selectable = !!onToggleSelect && doc.status === "ready";
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -167,7 +168,7 @@ export function DocumentCard({
             : t("docCard.pagesOnly", { pages: doc.pageCount })}
         </span>
         <span>
-          {bytes(doc.sizeBytes)} · {shortDate(doc.createdAt)}
+          {bytes(doc.sizeBytes)} · {shortDate(doc.createdAt, locale)}
         </span>
       </div>
 

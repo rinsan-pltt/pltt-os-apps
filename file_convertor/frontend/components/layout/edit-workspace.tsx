@@ -1,20 +1,29 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft, Download, FileUp, ImagePlus, ImageUp, Loader2, Pencil, RotateCw, Trash2, X } from "lucide-react"
+import { ArrowLeft, Download, FileUp, ImageUp, Loader2, Pencil, RotateCw, Sparkles, Trash2, X } from "lucide-react"
 
 import { Alert } from "@/components/ui/alert"
 import { BusyPanel } from "@/components/ui/busy-panel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/dialog"
+import { AiAssistantPanel } from "@/components/layout/ai-assistant-panel"
+import { EditorToolbox } from "@/components/layout/editor-toolbox"
 import { FileDropzone } from "@/components/layout/file-dropzone"
 import { exportEditedHtml, extractDocumentHtml, type ExtractedPage } from "@/lib/api"
+import { stripAiIds } from "@/lib/doc-assistant"
+import { hasTextSelection, raiseToFront, showKeptSelection } from "@/lib/dom-selection"
+import { cellOf } from "@/lib/grid-edit"
+import { useWorkspaceFiles, type WorkspaceFileProps } from "@/hooks/use-workspace-files"
 import { useT, useRegistryText } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { Tool } from "@/lib/tools"
 
 type Status = "idle" | "extracting" | "ready" | "error"
+
+/** `useT()`'s translate function — `t(key, values?, defaultValue?)`. */
+type Translate = ReturnType<typeof useT>
 
 // PDF points -> CSS px (96 CSS px per inch, 72 points per inch), clamped to a
 // usable on-screen width so a huge/tiny page size doesn't break the layout.
@@ -40,14 +49,100 @@ function sheetHeightPx(heightPt: number | undefined): number {
   return Math.round(heightPt * PT_TO_PX)
 }
 
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
+}
+
+// A worksheet has no page size: it is as wide as its columns and as long as
+// its rows, so it gets a full-width scrollable grid (sticky A/B/C header and
+// 1/2/3 gutter) labelled with the worksheet's own name — not a paper sheet.
+function buildSheetMarkup(p: ExtractedPage, index: number, total: number, t: Translate): string {
+  const name = p.name || `Sheet ${index + 1}`
+  const label =
+    `<div contenteditable="false" class="mb-1.5 flex select-none flex-wrap items-center justify-center gap-2 text-xs font-medium text-muted-foreground">` +
+    `<span class="xl-tab">${escapeAttr(name)}</span>` +
+    (total > 1 ? `<span>${escapeAttr(t("edit.sheetOf", { n: index + 1, total }))}</span>` : "") +
+    `</div>`
+  // A capped grid must say so: the download holds exactly what is on screen.
+  const notice =
+    p.meta?.truncated
+      ? `<div contenteditable="false" class="xl-notice">` +
+        escapeAttr(
+          t("edit.sheetTruncated", {
+            rows: p.meta.rows,
+            cols: p.meta.cols,
+            usedRows: p.meta.used_rows,
+            usedCols: p.meta.used_cols,
+          }),
+        ) +
+        `</div>`
+      : ""
+  return (
+    `<div class="xl-sheet-wrap" style="margin:0 auto ${PAGE_GAP_PX}px auto;">` +
+    label +
+    notice +
+    `<div class="doc-sheet xl-scroll rounded-sm border bg-white shadow-lg" data-page-content` +
+    ` data-positioned="false" data-kind="sheet" data-sheet-name="${escapeAttr(name)}">` +
+    p.html +
+    `</div></div>`
+  )
+}
+
 // Each source page becomes its own non-editable "Page N" label plus a
 // correctly-sized editable sheet — built as a single HTML string and set
 // imperatively (see the mount effect below) since the editable subtree must
 // stay uncontrolled by React.
-function buildPagesMarkup(pages: ExtractedPage[]): string {
-  const list = pages.length > 0 ? pages : [{ html: "<p><br></p>" }]
+/** Scale every positioned page in `root` down to fit `container`'s inner
+ *  width (never up). Shared with the Correct Mistakes preview, which draws
+ *  pages with `buildPagesMarkup` too. */
+export function fitPagesToWidth(root: HTMLElement, container: HTMLElement): void {
+  const cs = window.getComputedStyle(container)
+  const padX = parseFloat(cs.paddingLeft || "0") + parseFloat(cs.paddingRight || "0")
+  const avail = container.clientWidth - padX
+  if (avail <= 0) return
+  root.querySelectorAll<HTMLElement>(".doc-page-wrap").forEach((wrap) => {
+    const sw = parseFloat(wrap.dataset.sheetW || "")
+    const sh = parseFloat(wrap.dataset.sheetH || "")
+    const scale = wrap.querySelector<HTMLElement>(".doc-scale")
+    const clip = wrap.querySelector<HTMLElement>(".doc-scale-clip")
+    if (!sw || !sh || !scale || !clip) return
+    const s = Math.min(1, avail / sw)
+    scale.style.transform = s < 1 ? `scale(${s})` : ""
+    clip.style.height = `${Math.round(sh * s)}px`
+    wrap.style.width = `${Math.round(sw * s)}px`
+  })
+}
+
+/** The export payload `/edit/export` expects, built from extracted pages
+ *  (the editor builds the same from its live DOM in `doExport`). */
+export function pagesToExportHtml(pages: ExtractedPage[]): string {
+  return pages
+    .map((p) => {
+      const positioned = p.positioned === true
+      const w = p.width_pt
+      const h = p.height_pt
+      const style = positioned && w && h
+        ? ` style="position:relative;width:${w}pt;height:${h}pt;overflow:hidden;margin:0 auto;"`
+        : ""
+      const kind = p.kind === "sheet" ? "sheet" : "page"
+      const attrs =
+        `data-positioned="${positioned}"${w ? ` data-w="${w}"` : ""}${h ? ` data-h="${h}"` : ""}` +
+        ` data-kind="${kind}"${p.name ? ` data-sheet-name="${escapeAttr(p.name)}"` : ""}`
+      return `<div class="fc-page" ${attrs}${style}>${p.html}</div>`
+    })
+    .join("")
+}
+
+export function buildPagesMarkup(pages: ExtractedPage[], t: Translate): string {
+  const list: ExtractedPage[] = pages.length > 0 ? pages : [{ html: "<p><br></p>" }]
+  const sheetCount = list.filter((p) => p.kind === "sheet").length
+  let sheetIndex = -1
   return list
     .map((p, i) => {
+      if (p.kind === "sheet") {
+        sheetIndex += 1
+        return buildSheetMarkup(p, sheetIndex, sheetCount, t)
+      }
       const positioned = p.positioned === true
       const width = sheetWidthPx(p.width_pt, positioned)
       const height = sheetHeightPx(p.height_pt)
@@ -69,7 +164,8 @@ function buildPagesMarkup(pages: ExtractedPage[]): string {
       const dataAttrs =
         `${p.width_pt ? ` data-w="${p.width_pt}"` : ""}${p.height_pt ? ` data-h="${p.height_pt}"` : ""}`
       const label =
-        `<div contenteditable="false" class="mb-1.5 select-none text-center text-xs font-medium text-muted-foreground">Page ${i + 1} of ${list.length}</div>`
+        `<div contenteditable="false" class="mb-1.5 select-none text-center text-xs font-medium text-muted-foreground">` +
+        `${escapeAttr(t("edit.pageOf", { n: i + 1, total: list.length }))}</div>`
       if (positioned) {
         // A positioned page is rendered at its true pixel size (${width}×${height})
         // so its absolute `pt` coordinates stay exact, then the whole page is
@@ -168,14 +264,25 @@ function DocumentPicker({
   )
 }
 
-export function EditWorkspace({ tool }: { tool: Tool }) {
+export function EditWorkspace({
+  tool,
+  files: filesProp,
+  onFilesChange,
+  embedded,
+}: { tool: Tool } & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
-  const [files, setFiles] = React.useState<File[]>([])
+  const [files, setFiles] = useWorkspaceFiles(filesProp, onFilesChange)
   const [status, setStatus] = React.useState<Status>("idle")
   const [error, setError] = React.useState<string | null>(null)
   const [dirty, setDirty] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
+  const [aiOpen, setAiOpen] = React.useState(false)
+  // The last selection made INSIDE the document. Clicking into the assistant's
+  // prompt box moves the browser selection there, so what the user had
+  // highlighted is remembered here for the assistant to act on ("delete the
+  // one I selected").
+  const lastRangeRef = React.useRef<Range | null>(null)
   const editorRef = React.useRef<HTMLDivElement>(null)
   const pagesRef = React.useRef<HTMLDivElement>(null)
   const pendingPages = React.useRef<ExtractedPage[] | null>(null)
@@ -205,6 +312,15 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
   // The document was closed (toolbar X) but the editor is still open, showing
   // the picker so another file can be uploaded in its place.
   const [closed, setClosed] = React.useState(false)
+  // A spreadsheet opens as a grid of cells rather than as paper pages, so the
+  // toolbox swaps to spreadsheet tools and the page-only ones drop away.
+  const [isSheet, setIsSheet] = React.useState(false)
+  // The grid cell the caret sits in: every spreadsheet tool acts on it (and
+  // on any wider selection around it), so they stay disabled until there is one.
+  const [activeCell, setActiveCell] = React.useState<HTMLTableCellElement | null>(null)
+  // Pages rebuilt from a PDF render carry absolute coordinates; the toolbox
+  // drops the block-level tools whose output the exporter couldn't place.
+  const [isPositioned, setIsPositioned] = React.useState(false)
   // Closing or leaving throws the edited markup away, so a dirty document asks
   // first; this remembers which of the two to run once it is confirmed.
   const [pendingExit, setPendingExit] = React.useState<"close" | "back" | null>(null)
@@ -226,14 +342,9 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
     items: { el: HTMLElement; left: number; top: number; w: number; h: number; spans: { s: HTMLElement; size: number }[] }[]
   } | null>(null)
 
-  // Move the given elements to the end of their sheet (= on top of everything),
-  // so the LAST-selected object always renders over the others.
-  const bringToFront = (els: HTMLElement[]) => {
-    const ordered = [...els].sort((a, b) =>
-      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
-    )
-    ordered.forEach((el) => el.parentElement?.appendChild(el))
-  }
+  // Raise objects above their siblings without destroying the caret or the
+  // user's selection — see lib/dom-selection.ts for why that needs care.
+  const bringToFront = raiseToFront
 
   // Points-per-pixel for the sheet an image lives on (positioned sheets carry
   // their real width in `data-w`); falls back to the 96/72 ratio.
@@ -701,21 +812,7 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
     const root = editorRef.current
     const pages = pagesRef.current
     if (!root || !pages) return
-    const cs = window.getComputedStyle(pages)
-    const padX = parseFloat(cs.paddingLeft || "0") + parseFloat(cs.paddingRight || "0")
-    const avail = pages.clientWidth - padX
-    if (avail <= 0) return
-    root.querySelectorAll<HTMLElement>(".doc-page-wrap").forEach((wrap) => {
-      const sw = parseFloat(wrap.dataset.sheetW || "")
-      const sh = parseFloat(wrap.dataset.sheetH || "")
-      const scale = wrap.querySelector<HTMLElement>(".doc-scale")
-      const clip = wrap.querySelector<HTMLElement>(".doc-scale-clip")
-      if (!sw || !sh || !scale || !clip) return
-      const s = Math.min(1, avail / sw)
-      scale.style.transform = s < 1 ? `scale(${s})` : ""
-      clip.style.height = `${Math.round(sh * s)}px`
-      wrap.style.width = `${Math.round(sw * s)}px`
-    })
+    fitPagesToWidth(root, pages)
     // The overlay geometry is width-dependent, so keep any active selection glued.
     if (selectedImg) refreshImgRect(selectedImg)
     if (shapeEls.length) refreshShapeRect(shapeEls)
@@ -726,11 +823,55 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
   // and set it imperatively, once, right after extraction.
   React.useEffect(() => {
     if (status === "ready" && editorRef.current && pendingPages.current) {
-      editorRef.current.innerHTML = buildPagesMarkup(pendingPages.current)
+      editorRef.current.innerHTML = buildPagesMarkup(pendingPages.current, t)
       pendingPages.current = null
       applyDocScale()
     }
-  }, [status, applyDocScale])
+  }, [status, applyDocScale, t])
+
+  // Follow the caret into the grid so the spreadsheet tools know which cell
+  // they act on. `selectionchange` is document-wide, so this filters to the
+  // editor and only re-renders when the cell actually changes.
+  React.useEffect(() => {
+    if (status !== "ready") return
+    const onSelectionChange = () => {
+      const selection = window.getSelection()
+      const anchor = selection?.anchorNode ?? null
+      const inside = anchor && editorRef.current?.contains(anchor)
+      if (inside && selection && selection.rangeCount > 0) {
+        // A live selection in the document: remember it; the browser draws it.
+        lastRangeRef.current = selection.getRangeAt(0).cloneRange()
+        showKeptSelection(null)
+      } else if (lastRangeRef.current) {
+        // The selection moved elsewhere (the assistant, the toolbar's colour
+        // field…). Keep what the user had selected — and keep it visible. Only
+        // a click on the page area itself lets go of it (see forgetSelection).
+        showKeptSelection(lastRangeRef.current)
+      }
+      const cell = inside ? cellOf(anchor) : null
+      setActiveCell((current) => (current === cell ? current : cell))
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
+    return () => document.removeEventListener("selectionchange", onSelectionChange)
+  }, [status])
+
+  // Let go of the remembered selection. Called for a press on the page area —
+  // the pages and the grey around them — which is the one place a click means
+  // "I'm done with that selection". A press inside the document text makes a
+  // new selection anyway; one on the background would otherwise leave the old
+  // one silently remembered.
+  const forgetSelection = React.useCallback(() => {
+    lastRangeRef.current = null
+    showKeptSelection(null)
+  }, [])
+  React.useEffect(() => () => showKeptSelection(null), [])
+
+  // A structural edit (deleting the row the caret was in, say) can detach the
+  // tracked cell; drop it rather than acting on a node that is gone.
+  const onToolboxChange = React.useCallback(() => {
+    setDirty(true)
+    setActiveCell((current) => (current && current.isConnected ? current : null))
+  }, [])
 
   // Re-fit the pages whenever the panel resizes (OS window resize, sidebar
   // toggles, dev viewport changes).
@@ -743,40 +884,60 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
     return () => ro.disconnect()
   }, [status, applyDocScale])
 
-  const loadFile = async (next: File[]) => {
-    setFiles(next)
+  // Keyed on the FILE, not on the dropzone's callback.
+  //
+  // Opening a document used to happen inside `onFilesChange`, so it only ever
+  // ran for a file dropped on this screen. The section workspace hands the file
+  // down from its own upload bar, and the editor has to open whatever it is
+  // given — so the extraction follows the file instead.
+  const openFile = files[0] ?? null
+  React.useEffect(() => {
     setError(null)
     setDirty(false)
+    setIsSheet(false)
+    setIsPositioned(false)
+    setActiveCell(null)
     selectImage(null)
     clearShape()
-    if (next.length === 0) {
+    if (!openFile) {
       setStatus("idle")
       return
     }
+    let cancelled = false
     setStatus("extracting")
-    try {
-      const result = await extractDocumentHtml(next[0])
-      pendingPages.current = result.pages
-      setStatus("ready")
-      setClosed(false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("edit.couldNotOpen"))
-      setStatus("error")
+    extractDocumentHtml(openFile)
+      .then((result) => {
+        if (cancelled) return
+        pendingPages.current = result.pages
+        setIsSheet(result.pages.some((page) => page.kind === "sheet"))
+        setIsPositioned(result.pages.some((page) => page.positioned === true))
+        setStatus("ready")
+        setClosed(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : t("edit.couldNotOpen"))
+        setStatus("error")
+      })
+    return () => {
+      cancelled = true
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFile])
 
   // Toolbar X: close the document but stay in the editor, so another file can
   // be uploaded straight into it.
   const closeDocument = () => {
+    forgetSelection()
     pendingPages.current = null
     setClosed(true)
-    void loadFile([])
+    setFiles([])
   }
 
   // Toolbar Back: leave the editor for this tool's upload screen.
   const goBack = () => {
     setClosed(false)
-    void loadFile([])
+    setFiles([])
   }
 
   const requestExit = (kind: "close" | "back") => {
@@ -797,7 +958,7 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
       setError(t("edit.unsupportedFile", { types: tool.accept }))
       return
     }
-    void loadFile([file])
+    setFiles([file])
   }
 
   const doExport = async () => {
@@ -814,9 +975,15 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
             const style = positioned && w && h
               ? ` style="position:relative;width:${w}pt;height:${h}pt;overflow:hidden;margin:0 auto;"`
               : ""
+            // A worksheet is saved as a worksheet: the backend writes the
+            // edited grid straight back into a workbook (cells, formulas,
+            // number formats) instead of flattening it through a PDF.
+            const kind = el.getAttribute("data-kind") === "sheet" ? "sheet" : "page"
+            const sheetName = el.getAttribute("data-sheet-name")
             const attrs =
-              `data-positioned="${positioned}"${w ? ` data-w="${w}"` : ""}${h ? ` data-h="${h}"` : ""}`
-            return `<div class="fc-page" ${attrs}${style}>${el.innerHTML}</div>`
+              `data-positioned="${positioned}"${w ? ` data-w="${w}"` : ""}${h ? ` data-h="${h}"` : ""}` +
+              ` data-kind="${kind}"${sheetName ? ` data-sheet-name="${escapeAttr(sheetName)}"` : ""}`
+            return `<div class="fc-page" ${attrs}${style}>${stripAiIds(el.innerHTML)}</div>`
           })
           .join("")
       : ""
@@ -841,13 +1008,17 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
             <CardDescription>{reg.toolDescription(tool)}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <FileDropzone
-              accept={tool.accept}
-              multiple={false}
-              files={files}
-              onFilesChange={loadFile}
-              disabled={status === "extracting"}
-            />
+            {/* The section workspace draws the upload for the whole category;
+                see the note in use-workspace-files.ts. */}
+            {!embedded && (
+              <FileDropzone
+                accept={tool.accept}
+                multiple={false}
+                files={files}
+                onFilesChange={setFiles}
+                disabled={status === "extracting"}
+              />
+            )}
             {/* Opening a document is the longest operation in the app and used
                 to show a bare spinner with no progress bar at all. */}
             {status === "extracting" && <BusyPanel label={t("edit.opening")} />}
@@ -898,8 +1069,13 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
           <div className="flex items-center gap-2">
             {!closed && (
               <>
-                <Button size="sm" variant="outline" disabled={exporting} onClick={() => { fileMode.current = "add"; fileInputRef.current?.click() }}>
-                  <ImagePlus className="size-4" /> Add image
+                <Button
+                  size="sm"
+                  variant={aiOpen ? "secondary" : "outline"}
+                  aria-pressed={aiOpen}
+                  onClick={() => setAiOpen((open) => !open)}
+                >
+                  <Sparkles className="size-4" /> {t("edit.ai.title")}
                 </Button>
                 <Button size="sm" disabled={exporting} onClick={doExport}>
                   {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
@@ -913,6 +1089,22 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
           </div>
         </div>
         {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+        {/* Contextual toolbox: spreadsheet tools for a grid, text tools for a
+            document. Kept in the non-scrolling header so it stays reachable
+            however far down the document you are. */}
+        {!closed && (
+          <EditorToolbox
+            mode={isSheet ? "sheet" : "page"}
+            positioned={isPositioned}
+            editorRef={editorRef}
+            activeCell={activeCell}
+            onChanged={onToolboxChange}
+            onInsertImage={() => {
+              fileMode.current = "add"
+              fileInputRef.current?.click()
+            }}
+          />
+        )}
       </div>
 
       <input
@@ -944,9 +1136,14 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
       {/* Document canvas — the only scrolling region; each source page is its
           own separate, real-sized sheet, like a PDF/Word page view. Clicking an
           image selects it (delete / replace / resize via the overlay below). */}
+      {/* Canvas and, when open, the AI assistant beside it. The pages re-fit
+          to the narrower canvas through the ResizeObserver above. On a phone
+          the assistant covers the canvas instead of squeezing it. */}
+      <div className="relative flex min-h-0 flex-1">
       <div
         ref={pagesRef}
-        className="flex-1 overflow-y-auto bg-muted/60 px-4 py-8"
+        className="min-w-0 flex-1 overflow-y-auto bg-muted/60 px-4 py-8"
+        onPointerDown={forgetSelection}
         onClick={(e) => {
           const target = e.target as HTMLElement
           if (target.tagName === "IMG") {
@@ -954,12 +1151,18 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
           } else if (target.classList.contains("fc-shape")) {
             selectShape(target)
           } else {
-            // Text or empty space: drop any selection; if it's text, still bring
-            // that paragraph to the front (last selected on top).
+            // Text or empty space: drop any object selection; if it's text,
+            // bring that paragraph to the front (last clicked on top).
             selectImage(null)
             clearShape()
             const para = target.closest("p")
-            if (para && getComputedStyle(para).position === "absolute") bringToFront([para as HTMLElement])
+            // Not while text is selected: the user just made that selection by
+            // dragging, and raising the paragraph it ended in would reorder
+            // the document for no gain. A plain click (collapsed caret) still
+            // raises, and `bringToFront` puts the caret back afterwards.
+            if (!hasTextSelection() && para && getComputedStyle(para).position === "absolute") {
+              bringToFront([para as HTMLElement])
+            }
           }
         }}
       >
@@ -982,9 +1185,38 @@ export function EditWorkspace({ tool }: { tool: Tool }) {
               onInput={() => setDirty(true)}
               className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-            <p className="mt-6 text-center text-xs text-muted-foreground">{t("edit.note")}</p>
+            <p className="mt-6 text-center text-xs text-muted-foreground">
+              {isSheet ? t("edit.sheetNote") : t("edit.note")}
+            </p>
           </>
         )}
+      </div>
+      {aiOpen && !closed && (
+        <div className="absolute inset-y-0 right-0 z-40 w-full max-w-sm md:static md:z-auto md:w-80 md:max-w-none md:shrink-0">
+          <AiAssistantPanel
+            editorRef={editorRef}
+            isSheet={isSheet}
+            onChanged={onToolboxChange}
+            getSelection={() => ({
+              range: lastRangeRef.current,
+              // A clicked image or shape outranks a text selection: it is the
+              // object the user is looking at right now.
+              objects: selectedImg ? [selectedImg] : shapeEls,
+            })}
+            onRestored={() => {
+              // The markup may have been replaced wholesale (undo), which
+              // leaves the remembered range pointing at detached nodes.
+              if (lastRangeRef.current && !editorRef.current?.contains(lastRangeRef.current.startContainer)) {
+                forgetSelection()
+              }
+              selectImage(null)
+              clearShape()
+              applyDocScale()
+            }}
+            onClose={() => setAiOpen(false)}
+          />
+        </div>
+      )}
       </div>
 
       {/* Floating controls for the selected image (fixed, tracks the image). */}

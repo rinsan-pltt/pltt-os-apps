@@ -12,6 +12,7 @@ import {
   Lock,
   FolderOpen,
   Menu,
+  MessagesSquare,
   Pencil,
   Repeat,
   Sparkles,
@@ -25,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useT, useRegistryText } from "@/lib/i18n"
 import { CATEGORIES, CATEGORY_SLUG, categoryFromParam, type Category } from "@/lib/tools"
+import { listArrowNav } from "@/lib/arrow-nav"
 import { cn } from "@/lib/utils"
 
 /**
@@ -32,10 +34,12 @@ import { cn } from "@/lib/utils"
  * wrapper around `<main>`, so 37 tools across 7 categories were reachable only
  * by browser-back or the one "Workflows" pill buried in the hero.
  *
- * A sidebar at `md`+, a top bar plus a focus-trapped drawer below it, and an
- * icon rail for the routes that need their width (the editor, compare, organize
- * and translate surfaces). The working area owns the scroll so the sidebar
- * stays put — no sticky positioning and no viewport-relative `fixed`, either of
+ * A sidebar at `md`+, a top bar plus a focus-trapped drawer below it, and a
+ * collapsed icon rail whenever the user asks for one. Expanded or collapsed is
+ * the USER's choice and only the user's: it is held in a module store, written
+ * through to `localStorage`, and never reset by a route — a sidebar that
+ * changes state on its own reads as a glitch on every navigation. The working
+ * area owns the scroll so the sidebar stays put — no sticky positioning and no viewport-relative `fixed`, either of
  * which can escape the plugin's bounds inside the OS iframe.
  */
 
@@ -60,36 +64,67 @@ export const categoryHref = (c: Category | "All") =>
 
 const COLLAPSE_KEY = "document-toolbox:sidebar"
 
-/** Collapsed-rail preference.
+/**
+ * The collapse state lives OUTSIDE React, in a module store.
  *
- *  Absent means "no opinion", and the route decides: the four wide routes start
- *  collapsed because that is where the canvas matters. An explicit toggle wins
- *  everywhere and persists. */
-function useSidebarCollapsed(dense: boolean) {
-  const [pref, setPref] = React.useState<boolean | null>(null)
+ * `AppShell` is rendered by each page, not by a layout, so every navigation
+ * mounts a brand new shell. While the state was a `useState` seeded from a
+ * route default and corrected by a mount effect, each new page rendered the
+ * default first and flipped to the stored preference a frame later — which is
+ * the sidebar visibly collapsing and re-opening on the way into a tool.
+ * A module store is read synchronously by the first render of the new shell,
+ * so there is nothing left to flip.
+ *
+ * It is also the whole of the state: no route may decide the sidebar for you.
+ * Only the toggle changes it, and it persists.
+ */
+let collapsedState: boolean | null = null
+const listeners = new Set<() => void>()
 
-  React.useEffect(() => {
+function getSnapshot() {
+  if (collapsedState === null) {
     try {
-      const stored = window.localStorage.getItem(COLLAPSE_KEY)
-      if (stored === "collapsed") setPref(true)
-      else if (stored === "expanded") setPref(false)
+      collapsedState = window.localStorage.getItem(COLLAPSE_KEY) === "collapsed"
     } catch {
-      // Private mode or blocked storage: fall back to the route default.
+      // Private mode or blocked storage: expanded, and the toggle still works.
+      collapsedState = false
     }
-  }, [])
+  }
+  return collapsedState
+}
 
-  const collapsed = pref ?? dense
+/** The server cannot know the preference. It renders expanded and React
+ *  re-renders with the stored value immediately after hydration — once per
+ *  full page load, and the transition is suppressed for that first frame. */
+const getServerSnapshot = () => false
+
+function subscribe(onChange: () => void) {
+  listeners.add(onChange)
+  // A second instance of the plugin in another tab should not disagree.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== COLLAPSE_KEY) return
+    collapsedState = e.newValue === "collapsed"
+    listeners.forEach((l) => l())
+  }
+  window.addEventListener("storage", onStorage)
+  return () => {
+    listeners.delete(onChange)
+    window.removeEventListener("storage", onStorage)
+  }
+}
+
+function useSidebarCollapsed() {
+  const collapsed = React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+
   const toggle = React.useCallback(() => {
-    setPref((prev) => {
-      const next = !(prev ?? dense)
-      try {
-        window.localStorage.setItem(COLLAPSE_KEY, next ? "collapsed" : "expanded")
-      } catch {
-        // Preference simply won't persist; the toggle still works this session.
-      }
-      return next
-    })
-  }, [dense])
+    collapsedState = !getSnapshot()
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, collapsedState ? "collapsed" : "expanded")
+    } catch {
+      // Preference simply won't persist; the toggle still works this session.
+    }
+    listeners.forEach((l) => l())
+  }, [])
 
   return { collapsed, toggle }
 }
@@ -134,6 +169,7 @@ function NavItem({
     <Link
       href={href}
       draggable={false}
+      data-nav-item
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       // Collapsed, the icon is the only label, so the accessible name has to
@@ -146,11 +182,14 @@ function NavItem({
         // the centre of the 48px rail slot, and a class swap did that in one
         // frame while the sidebar beside it was still sliding.
         "transition-[color,background-color,padding] duration-[var(--dt-dur-slow)] ease-[var(--dt-ease-out)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+        // Keyboard focus gets the hover shade, not a ring: arrowing through
+        // the list drew a second box around each item (and around the
+        // already-filled active pill).
+        "focus-visible:outline-none",
         collapsed ? "pl-4 pr-0" : "px-2.5",
         active
           ? "bg-primary font-medium text-primary-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
       )}
     >
       <Icon className="size-4 shrink-0" aria-hidden />
@@ -181,6 +220,7 @@ function SidebarNav({
   const t = useT()
   const reg = useRegistryText()
   const pathname = usePathname()
+  const navRef = React.useRef<HTMLElement>(null)
   // Every destination in this app is a path, so "where am I" is a pathname
   // test and nothing else.
   const activeCat = categoryFromParam(
@@ -189,7 +229,14 @@ function SidebarNav({
   const onHome = pathname === "/" || Boolean(activeCat)
 
   return (
-    <nav aria-label={t("nav.primary")} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+    // Up/Down (Home/End) move between every item, across the groups; Enter
+    // opens it. Focus only — moving never navigates on its own.
+    <nav
+      ref={navRef}
+      aria-label={t("nav.primary")}
+      onKeyDown={(e) => listArrowNav(e, navRef.current, "a[data-nav-item]")}
+      className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
+    >
       <ul className="space-y-0.5">
         <li>
           <NavItem
@@ -197,6 +244,18 @@ function SidebarNav({
             icon={Wrench}
             label={t("nav.allTools")}
             active={onHome && !activeCat}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        </li>
+        <li>
+          {/* The global chat: any tool, by asking. Second from the top because
+              it is an alternative way into everything below it. */}
+          <NavItem
+            href="/chat"
+            icon={MessagesSquare}
+            label={t("chat.nav")}
+            active={pathname?.startsWith("/chat") ?? false}
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
@@ -269,22 +328,25 @@ function SidebarNav({
   )
 }
 
-export function AppShell({
-  children,
-  /** Start with the sidebar collapsed to a rail — for the routes whose canvas
-   *  needs the width (see `wide` in app/tools/[slug]/page.tsx). A user toggle
-   *  still overrides this. */
-  dense = false,
-}: {
-  children: React.ReactNode
-  dense?: boolean
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useT()
   const pathname = usePathname()
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const drawerRef = React.useRef<HTMLDivElement>(null)
   const restoreTo = React.useRef<HTMLElement | null>(null)
-  const { collapsed, toggle } = useSidebarCollapsed(dense)
+  const { collapsed, toggle } = useSidebarCollapsed()
+
+  // Animate the user's toggle and nothing else. The first client render of a
+  // full page load still renders the server's snapshot and settles to the
+  // stored preference right after hydration; animating that settle is the
+  // slide-out-and-back the sidebar is not supposed to do. Zeroing the shared
+  // duration token for that one frame covers the whole shell at once — every
+  // animated part below reads `--dt-dur-slow`.
+  const [animate, setAnimate] = React.useState(false)
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => setAnimate(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
 
   // Any navigation closes the drawer — otherwise it sits over the page the user
   // just asked for.
@@ -347,6 +409,7 @@ export function AppShell({
           ? "md:grid-cols-[var(--dt-rail-w)_minmax(0,1fr)]"
           : "md:grid-cols-[var(--dt-sidebar-w)_minmax(0,1fr)]",
       )}
+      style={animate ? undefined : ({ "--dt-dur-slow": "0ms" } as React.CSSProperties)}
     >
       <a
         href="#main"

@@ -218,3 +218,34 @@ class RoleAssignment(OrgScopedTable):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class MemberLocality(OrgScopedTable):
+    """App-held work locality for an org member.
+
+    A stopgap. Locality belongs on the Palette OS member profile and the app
+    only reads it (`members:read`; the SDK exposes no profile write). Until the
+    platform carries a country field, an admin needs some way to say where
+    someone works, because without it every settlement is hard-blocked.
+
+    The platform profile stays authoritative: this row is consulted only when
+    the profile has no usable locality, so the day the SDK provides one, these
+    rows quietly stop being read and can be dropped.
+    """
+
+    __tablename__ = "corporate_card_system__member_localities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    member_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    # The resolved code ("KR"/"IN") the policy engine uses.
+    locality: Mapped[str] = mapped_column(String(12), nullable=False)
+    # What the admin actually typed ("Seoul", "Asia/Kolkata"), kept so the UI can
+    # echo their own words back rather than only the code it resolved to.
+    entered_value: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    set_by_member_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

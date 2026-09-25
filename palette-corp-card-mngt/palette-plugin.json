@@ -2,7 +2,7 @@
   "manifest_version": "1",
   "id": "corporate-card-system",
   "name": "Corporate Card System",
-  "version": "0.2.1",
+  "version": "0.1.110",
   "developer": "Palette",
   "category": "Productivity",
   "tagline": "Corporate card requests, settlement claims, and approval workflows.",

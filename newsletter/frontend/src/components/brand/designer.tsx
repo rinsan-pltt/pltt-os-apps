@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { ImageModal } from "../editor/image-modal";
 import { Button, Input, Select } from "../ui/primitives";
 import { cn } from "../../lib/cn";
+import { useLocale } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import type { Brand, BrandElement, BrandElementType, BrandTemplate, Palette } from "../../lib/types";
 
@@ -22,7 +23,7 @@ function resolveColor(c: string | undefined, palette: Palette): string {
   if (c === "bg") return palette.bg;
   return c || "#111111";
 }
-function sampleText(t: string | undefined, brand: Brand): string {
+function sampleText(t: string | undefined, brand: Brand, locale: string): string {
   const now = new Date();
   return (t || "")
     .replace(/\{\{\s*brand\.name\s*\}\}/g, brand.name)
@@ -31,10 +32,10 @@ function sampleText(t: string | undefined, brand: Brand): string {
     .replace(/\{\{\s*page\.total\s*\}\}/g, "3")
     .replace(
       /\{\{\s*time\.date\s*\}\}/g,
-      now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      now.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" }),
     )
-    .replace(/\{\{\s*time\.day\s*\}\}/g, now.toLocaleDateString("en-US", { weekday: "long" }))
-    .replace(/\{\{\s*time\.month\s*\}\}/g, now.toLocaleDateString("en-US", { month: "long" }))
+    .replace(/\{\{\s*time\.day\s*\}\}/g, now.toLocaleDateString(locale, { weekday: "long" }))
+    .replace(/\{\{\s*time\.month\s*\}\}/g, now.toLocaleDateString(locale, { month: "long" }))
     .replace(/\{\{\s*time\.year\s*\}\}/g, String(now.getFullYear()));
 }
 function defaultEl(type: BrandElementType): BrandElement {
@@ -322,6 +323,7 @@ export function BrandDesigner({
 
 function ElementBody({ el, brand, palette }: { el: BrandElement; brand: Brand; palette: Palette }) {
   const t = useT();
+  const locale = useLocale();
   if (el.type === "logo") {
     return brand.logoUrl ? (
       // eslint-disable-next-line @next/next/no-img-element
@@ -369,7 +371,7 @@ function ElementBody({ el, brand, palette }: { el: BrandElement; brand: Brand; p
         lineHeight: 1.15,
       }}
     >
-      {sampleText(el.text, brand)}
+      {sampleText(el.text, brand, locale)}
     </div>
   );
 }

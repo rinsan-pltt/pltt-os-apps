@@ -17,12 +17,15 @@ import difflib
 import anyio
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from ..core.documents import DOCUMENT_EXTS, ensure_pdf
 from ..core.files import cleanup, new_workdir, save_upload
 from ..core.palette import require_permission
 
 router = APIRouter(tags=["compare"])
 
-PDF = {".pdf"}
+# Any document — rendered to PDF on the way in (core/documents.py), so a Word
+# draft can be compared against the PDF it was exported to.
+ACCEPTS = DOCUMENT_EXTS
 MAX_PAGES = 80
 # ~110 DPI (72 * 1.53) — crisp enough to read, small enough to inline as base64.
 _RENDER_ZOOM = 1.53
@@ -181,8 +184,8 @@ def _build_report(a, b) -> dict:
 async def compare_pages(file: UploadFile):
     workdir = new_workdir()
     try:
-        src = await save_upload(file, workdir, PDF)
-        return await anyio.to_thread.run_sync(_render_pages, src)
+        src = await save_upload(file, workdir, ACCEPTS)
+        return await anyio.to_thread.run_sync(lambda: _render_pages(ensure_pdf(src, workdir)))
     except ImportError as exc:
         raise HTTPException(status_code=424, detail=f"PDF rendering is unavailable on this deployment ({exc}).")
     finally:
@@ -193,9 +196,11 @@ async def compare_pages(file: UploadFile):
 async def compare_report(a: UploadFile, b: UploadFile):
     workdir = new_workdir()
     try:
-        src_a = await save_upload(a, workdir, PDF)
-        src_b = await save_upload(b, workdir, PDF)
-        return await anyio.to_thread.run_sync(_build_report, src_a, src_b)
+        src_a = await save_upload(a, workdir, ACCEPTS)
+        src_b = await save_upload(b, workdir, ACCEPTS)
+        return await anyio.to_thread.run_sync(
+            lambda: _build_report(ensure_pdf(src_a, workdir), ensure_pdf(src_b, workdir))
+        )
     except ImportError as exc:
         raise HTTPException(status_code=424, detail=f"PDF comparison is unavailable on this deployment ({exc}).")
     finally:

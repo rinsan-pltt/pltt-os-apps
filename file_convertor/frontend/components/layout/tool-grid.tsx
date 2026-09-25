@@ -1,7 +1,9 @@
 "use client"
 
+import * as React from "react"
 import { SearchX } from "lucide-react"
 
+import { gridArrowNav } from "@/lib/arrow-nav"
 import { useT, useRegistryText } from "@/lib/i18n"
 import { CATEGORIES, TOOLS, type Tool } from "@/lib/tools"
 
@@ -63,9 +65,12 @@ export function ToolGrid({ query = "", category = "All" }: { query?: string; cat
   // hero's pills linked to, so the same seven words were both a filter and a
   // jump link. The rail filters; these are plain headings.
   const grouped = category === "All"
+  // Arrow keys move between the cards (Up/Down to the card above/below, even
+  // across the category headings); Tab still walks them in order.
+  const gridRef = React.useRef<HTMLDivElement>(null)
 
   return (
-    <>
+    <div ref={gridRef} onKeyDown={(e) => gridArrowNav(e, gridRef.current, "a[data-tool-card]")}>
       {/* The result count was previously silent: a screen-reader user typing in
           the search box got no feedback that the grid had changed at all. */}
       <p role="status" aria-live="polite" className="sr-only">
@@ -93,7 +98,7 @@ export function ToolGrid({ query = "", category = "All" }: { query?: string; cat
       ) : (
         <ToolCards tools={visible} />
       )}
-    </>
+    </div>
   )
 }
 
