@@ -6,8 +6,10 @@ import { Download, FolderOpen } from "lucide-react"
 import { Alert } from "@/components/ui/alert"
 import { BusyPanel } from "@/components/ui/busy-panel"
 import { Button } from "@/components/ui/button"
+import { PanelContent, PanelShell } from "@/components/ui/panel-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Label } from "@/components/ui/label"
 import { RunBar } from "@/components/ui/run-bar"
 import { Select } from "@/components/ui/select"
@@ -15,9 +17,11 @@ import { FileDropzone } from "@/components/layout/file-dropzone"
 import { DataRoomPicker } from "@/components/layout/data-room-picker"
 import { type DataRoomFile } from "@/lib/api"
 import { Sheet } from "@/components/ui/sheet"
+import { cn } from "@/lib/utils"
 import { useToolRunner } from "@/hooks/use-tool-runner"
+import { useWorkspaceFiles, type WorkspaceFileProps } from "@/hooks/use-workspace-files"
 import { useT, useRegistryText } from "@/lib/i18n"
-import type { Tool, ToolOption } from "@/lib/tools"
+import { passwordLengthProblem, type Tool, type ToolOption } from "@/lib/tools"
 
 /** File extensions that refer to the same underlying format for conversion purposes. */
 function normalizeExt(ext: string): string {
@@ -44,15 +48,18 @@ export function ToolWorkspace({
   dataRoomFile,
   onClearDataRoomFile,
   onPickDataRoomFile,
+  files: filesProp,
+  onFilesChange,
+  embedded,
 }: {
   tool: Tool
   dataRoomFile?: { id: number; name: string } | null
   onClearDataRoomFile?: () => void
   onPickDataRoomFile?: (file: DataRoomFile) => void
-}) {
+} & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
-  const [files, setFiles] = React.useState<File[]>([])
+  const [files, setFiles] = useWorkspaceFiles(filesProp, onFilesChange)
   const [options, setOptions] = React.useState<Record<string, string>>(() => {
     const defaults: Record<string, string> = {}
     for (const opt of tool.options ?? []) {
@@ -80,7 +87,10 @@ export function ToolWorkspace({
   const roomIds = dataRoomFile ? [dataRoomFile.id] : []
   const inputCount = files.length + roomIds.length
   const hasRequiredFileCount = tool.exactFiles ? inputCount === tool.exactFiles : inputCount > 0
-  const canRun = hasRequiredFileCount && !missingRequired && status !== "working"
+  const badLength = (tool.options ?? [])
+    .map((opt) => ({ opt, problem: passwordLengthProblem(opt, options[opt.name] ?? "") }))
+    .find((entry) => entry.problem)
+  const canRun = hasRequiredFileCount && !missingRequired && !badLength && status !== "working"
 
   // A disabled button with no stated cause is a dead end. Most specific first:
   // "you need one more file" is more actionable than "fill in the password".
@@ -90,7 +100,19 @@ export function ToolWorkspace({
       : t("tool.needFile")
     : missingRequired
       ? t("tool.needOption", { label: reg.optLabel(tool.slug, missingRequired) })
-      : null
+      : badLength && badLength.opt.kind === "password"
+        ? badLength.problem === "short"
+          ? t("tool.passwordTooShort", { label: reg.optLabel(tool.slug, badLength.opt), min: badLength.opt.minLength ?? 0 })
+          : t("tool.passwordTooLong", { label: reg.optLabel(tool.slug, badLength.opt), max: badLength.opt.maxLength ?? 0 })
+        : null
+
+  // The file can also change from the section workspace's upload bar, which
+  // never runs the dropzone handler — so the same reset hangs off the file.
+  const stagedFile = files[0]
+  React.useEffect(() => {
+    if (status === "done" || status === "error") reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stagedFile])
 
   const setOption = (name: string, value: string) => {
     setOptions((prev) => ({ ...prev, [name]: value }))
@@ -111,10 +133,12 @@ export function ToolWorkspace({
   }, [uploadedExt])
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-form space-y-block">
-      <Card>
-        <CardContent className="space-y-section">
-          {dataRoomFile && (
+    <div className={cn("w-full min-w-0 max-w-form space-y-block", !embedded && "mx-auto")}>
+      <PanelShell embedded={embedded}>
+        <PanelContent embedded={embedded} className="space-y-section">
+          {/* The section workspace shows the chosen Data Room file in its own
+              file bar, so the panel would otherwise say it twice. */}
+          {dataRoomFile && !embedded && (
             <div className="space-y-2">
               <p className="text-caption text-muted-foreground">{t("dataRoom.usingFile")}</p>
               <Sheet flush className="flex items-center gap-3 px-3 py-2.5">
@@ -135,25 +159,30 @@ export function ToolWorkspace({
             </div>
           )}
 
-          <FileDropzone
-            accept={tool.accept}
-            multiple={tool.multiple}
-            capture={tool.capture}
-            maxFiles={tool.exactFiles}
-            files={files}
-            onFilesChange={(next) => {
-              setFiles(next)
-              if (status === "done" || status === "error") reset()
-            }}
-            disabled={status === "working"}
-          />
+          {/* Hidden when embedded: the section workspace carries one upload
+              above every tool in the category, so a second dropzone here would
+              be a second answer to the same question. */}
+          {!embedded && (
+            <FileDropzone
+              accept={tool.accept}
+              multiple={tool.multiple}
+              capture={tool.capture}
+              maxFiles={tool.exactFiles}
+              files={files}
+              onFilesChange={(next) => {
+                setFiles(next)
+                if (status === "done" || status === "error") reset()
+              }}
+              disabled={status === "working"}
+            />
+          )}
 
           {/* The second way in. A tool could only ever be fed a local upload,
               so a document this app had just produced had to be downloaded and
               handed straight back — the Data Room already holds it, and the
               backend reads its bytes directly (`data_room_file_ids`), so the
               file never travels to the browser and back. */}
-          {!dataRoomFile && (
+          {!dataRoomFile && !embedded && (
             <div className="flex justify-center">
               <Button
                 type="button"
@@ -189,10 +218,19 @@ export function ToolWorkspace({
                         </option>
                       ))}
                     </Select>
+                  ) : opt.kind === "password" ? (
+                    <PasswordInput
+                      id={`opt-${opt.name}`}
+                      minLength={opt.minLength}
+                      maxLength={opt.maxLength}
+                      placeholder={reg.optPlaceholder(tool.slug, opt.name, opt.placeholder)}
+                      value={options[opt.name] ?? ""}
+                      onChange={(e) => setOption(opt.name, e.target.value)}
+                      disabled={status === "working"}
+                    />
                   ) : (
                     <Input
                       id={`opt-${opt.name}`}
-                      type={opt.kind === "password" ? "password" : "text"}
                       placeholder={reg.optPlaceholder(tool.slug, opt.name, opt.placeholder)}
                       value={options[opt.name] ?? ""}
                       onChange={(e) => setOption(opt.name, e.target.value)}
@@ -255,8 +293,8 @@ export function ToolWorkspace({
                 : undefined
             }
           />
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </PanelShell>
 
       <DataRoomPicker
         tool={tool}

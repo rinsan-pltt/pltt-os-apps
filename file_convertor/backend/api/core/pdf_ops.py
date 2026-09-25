@@ -164,11 +164,29 @@ def rotate_pdf(src: Path, workdir: Path, angle: int) -> list[Path]:
     return [out]
 
 
+# The same bounds the frontend states (NEW_PASSWORD_LENGTH in lib/tools.ts).
+# 32 characters stays inside AES-256 PDF's 127-byte password limit even at
+# three bytes a character, so nothing typed is silently truncated.
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 32
+
+
+def check_new_password(password: str) -> None:
+    """422 unless `password` is a usable new password. Shared by every Protect
+    path — PDF and Office alike — so the bounds cannot drift apart."""
+    if not password:
+        raise HTTPException(status_code=422, detail="A password is required to protect the document.")
+    if not PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The password must be {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} characters long.",
+        )
+
+
 def protect_pdf(src: Path, workdir: Path, password: str) -> list[Path]:
     import fitz
 
-    if not password:
-        raise HTTPException(status_code=422, detail="A password is required to protect the PDF.")
+    check_new_password(password)
     doc = _open_doc(src)
     try:
         # Allow every standard PDF permission for a reader who supplies the

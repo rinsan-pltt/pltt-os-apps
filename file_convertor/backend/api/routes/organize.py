@@ -12,12 +12,16 @@ import base64
 import anyio
 from fastapi import APIRouter, Form, HTTPException, UploadFile
 
+from ..core.documents import DOCUMENT_EXTS, ensure_pdf
 from ..core.files import cleanup, new_workdir, respond_with, save_upload
 from ..core.palette import require_permission
 
 router = APIRouter(tags=["organize"])
 
-PDF = {".pdf"}
+# Any document: Word, PowerPoint, Hancom and the rest are rendered to PDF on
+# the way in (core/documents.py), so the pages shown are the pages the Rotate,
+# Crop, Sign, Watermark and Page-number tools will then work on.
+ACCEPTS = DOCUMENT_EXTS
 MAX_PAGES = 300
 
 
@@ -104,8 +108,8 @@ def _apply(src, workdir, order: str):
 async def organize_preview(file: UploadFile):
     workdir = new_workdir()
     try:
-        src = await save_upload(file, workdir, PDF)
-        return await anyio.to_thread.run_sync(_preview, src)
+        src = await save_upload(file, workdir, ACCEPTS)
+        return await anyio.to_thread.run_sync(lambda: _preview(ensure_pdf(src, workdir)))
     finally:
         cleanup(workdir)
 
@@ -114,8 +118,8 @@ async def organize_preview(file: UploadFile):
 async def organize_apply(file: UploadFile, order: str = Form(...)):
     workdir = new_workdir()
     try:
-        src = await save_upload(file, workdir, PDF)
-        outputs = await anyio.to_thread.run_sync(_apply, src, workdir, order)
+        src = await save_upload(file, workdir, ACCEPTS)
+        outputs = await anyio.to_thread.run_sync(lambda: _apply(ensure_pdf(src, workdir), workdir, order))
         return respond_with(workdir, outputs)
     except HTTPException:
         cleanup(workdir)

@@ -200,6 +200,11 @@
 
   --dt-sidebar-w: 15.5rem;
   --dt-rail-w: 4rem;
+  /* The section workspace's tool list. Narrower than the app sidebar beside
+     it (15.5rem) so the two vertical lists do not read as one 30rem slab, and
+     wide enough that a two-line tool name still leaves the panel the width it
+     needs. */
+  --dt-toolrail-w: 14rem;
   --dt-topbar-h: 3.5rem;
 
   /* Content width, chosen per content SHAPE rather than one shared cap.
@@ -481,6 +486,103 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Spreadsheet grid — an uploaded .xlsx/.csv opens as its real cells, with
+   column letters and row numbers, not as a page render. The grid scrolls
+   inside its own box (a wide sheet must never widen the app), and both
+   headers stay pinned while it does, so column A is still identifiable on
+   row 300. Colors are pinned to the sheet's own white ground rather than the
+   app theme's, matching how the paper pages already render.
+--------------------------------------------------------------------------- */
+.xl-sheet-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+.xl-scroll {
+  overflow: auto;
+  max-height: min(72vh, 900px);
+  /* The sticky headers are painted against this, so it cannot be transparent. */
+  background: #fff;
+  color: oklch(0.25 0.01 265);
+}
+.doc-sheet table.xl-grid {
+  border-collapse: separate; /* `collapse` drops borders on sticky cells */
+  border-spacing: 0;
+  max-width: none;
+  width: max-content;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.doc-sheet table.xl-grid td,
+.doc-sheet table.xl-grid th {
+  border: 0;
+  border-right: 1px solid var(--dt-sheet-edge);
+  border-bottom: 1px solid var(--dt-sheet-edge);
+  padding: 2px 6px;
+  vertical-align: middle;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Gridlines off in the source workbook: keep the cell boxes, drop the rules. */
+.doc-sheet table.xl-grid.xl-no-lines td {
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+}
+.doc-sheet table.xl-grid .xl-colhead,
+.doc-sheet table.xl-grid .xl-rowhead,
+.doc-sheet table.xl-grid .xl-corner {
+  background: oklch(0.955 0.004 265);
+  color: oklch(0.45 0.01 265);
+  font-weight: 500;
+  text-align: center;
+  user-select: none;
+  cursor: default;
+}
+.doc-sheet table.xl-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.doc-sheet table.xl-grid .xl-rowhead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 42px;
+}
+.doc-sheet table.xl-grid .xl-corner {
+  left: 0;
+  z-index: 3;
+}
+.doc-sheet table.xl-grid td:focus,
+.doc-sheet table.xl-grid td:focus-visible {
+  outline: 2px solid var(--dt-info-text);
+  outline-offset: -2px;
+}
+/* Sheet-name tab above the grid, and the "not all of it fits" warning. */
+.xl-tab {
+  border-radius: 0.25rem 0.25rem 0 0;
+  background: var(--dt-sheet);
+  border: 1px solid var(--dt-sheet-edge);
+  border-bottom: none;
+  padding: 0.15rem 0.6rem;
+  color: var(--dt-sheet-foreground);
+  font-weight: 600;
+}
+.xl-notice {
+  margin: 0 auto 0.4rem auto;
+  border-radius: 0.375rem;
+  border: 1px solid var(--dt-warning);
+  background: var(--dt-warning-subtle);
+  color: var(--dt-warning-text);
+  padding: 0.35rem 0.6rem;
+  font-size: 11px;
+  text-align: center;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------------
    Loading / progress animations.
    The plugin renders inside a sandboxed iframe on the OS platform, where the
    "converting" spinner icon was appearing frozen. Define spin explicitly here
@@ -586,4 +688,12 @@ body {
 /* Shape fills/strokes are clickable objects (select → move/resize/delete). */
 [data-page-content] .fc-shape {
   cursor: pointer;
+}
+
+/* A selection the document editor remembers while focus is elsewhere (the AI
+   assistant's prompt box) — see showKeptSelection in lib/dom-selection.ts.
+   Matches the browser's own selection colour closely enough to read as
+   "still selected". */
+::highlight(fc-kept-selection) {
+  background-color: rgb(99 102 241 / 0.3);
 }

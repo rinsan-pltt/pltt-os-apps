@@ -116,6 +116,11 @@ MEDIA_TYPES = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    # Unlock Document hands these back in their own format.
+    ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+    ".doc": "application/msword",
+    ".xls": "application/vnd.ms-excel",
+    ".ppt": "application/vnd.ms-powerpoint",
     ".txt": "text/plain",
     ".zip": "application/zip",
     ".jpg": "image/jpeg",

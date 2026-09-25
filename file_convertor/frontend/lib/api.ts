@@ -152,9 +152,15 @@ export interface ProofreadFix {
   before: string
   after: string
   explanation: string
+  /** 1-based page the fix is on. */
+  page?: number
+  /** False when the model's "before" text was not found where it said. */
+  applied?: boolean
 }
 
 export interface ProofreadResult {
+  /** The corrected document in the editor's page shape — layout intact. */
+  pages: ExtractedPage[]
   corrected_text: string
   fixes: ProofreadFix[]
   fix_count: number
@@ -174,6 +180,163 @@ async function postAi<T>(path: string, form: FormData): Promise<T> {
     throw new Error(await errorDetail(resp, `Request failed (HTTP ${resp.status}).`))
   }
   return (await resp.json()) as T
+}
+
+// ------------------------------------------------------------ Edit assistant
+
+/** Text styling an assistant operation can set; absent = leave as is. */
+export interface AssistantTextStyle {
+  color?: string
+  highlight?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  strike?: boolean
+  fontSize?: number
+}
+
+export type AssistantOperation =
+  | ({ op: "style"; ids: string[] } & AssistantTextStyle)
+  /** Style exactly the highlighted characters, not the lines they sit in. */
+  | ({ op: "style_selection" } & AssistantTextStyle)
+  | { op: "align"; ids: string[]; align: "left" | "center" | "right" }
+  | { op: "clear_format"; ids: string[] }
+  | { op: "replace_text"; id: string; find?: string; replace: string }
+  | { op: "heading"; ids: string[]; level: 0 | 1 | 2 }
+  | { op: "list"; ids: string[]; ordered: boolean }
+  | { op: "delete"; ids: string[] }
+  | { op: "delete_selection" }
+  | { op: "replace_selection"; text: string }
+  | { op: "cell_value"; sheet: string; ref: string; value: string }
+  | {
+      op: "cell_style"
+      sheet: string
+      refs: string[]
+      bold?: boolean
+      italic?: boolean
+      underline?: boolean
+      color?: string
+      fill?: string
+      align?: "left" | "center" | "right"
+    }
+
+export interface AssistantRequest {
+  kind: "document" | "sheet"
+  layout: "positioned" | "flowing"
+  blocks: unknown[]
+  cells: unknown[]
+  objects: unknown[]
+  selection: string
+  history: { role: "user" | "assistant"; content: string }[]
+  prompt: string
+}
+
+export interface AssistantReply {
+  answer: string
+  operations: AssistantOperation[]
+  model: string
+}
+
+/** Ask the editor's AI assistant. JSON rather than a form: the outline is
+ *  structured data, not a file. */
+export async function askAssistant(body: AssistantRequest): Promise<AssistantReply> {
+  let resp: Response
+  try {
+    resp = await apiFetch("/ai/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Could not reach the AI backend: ${msg}`)
+  }
+  if (!resp.ok) {
+    throw new Error(await errorDetail(resp, `Request failed (HTTP ${resp.status}).`))
+  }
+  return (await resp.json()) as AssistantReply
+}
+
+// --------------------------------------------------------------- Global chat
+
+export interface AgentStep {
+  tool: string
+  /** File ids from the session, or "$prev" for the previous step's output. */
+  files: string[]
+  options: Record<string, string>
+}
+
+export interface AgentReply {
+  reply: string
+  steps: AgentStep[]
+  open_tool: string | null
+  dropped: boolean
+  model: string
+}
+
+export async function askAgent(body: {
+  catalog: unknown[]
+  files: unknown[]
+  history: { role: "user" | "assistant"; content: string }[]
+  prompt: string
+}): Promise<AgentReply> {
+  let resp: Response
+  try {
+    resp = await apiFetch("/ai/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Could not reach the AI backend: ${msg}`)
+  }
+  if (!resp.ok) {
+    throw new Error(await errorDetail(resp, `Request failed (HTTP ${resp.status}).`))
+  }
+  return (await resp.json()) as AgentReply
+}
+
+// ------------------------------------------------------------- Document chat
+
+export interface OpenedDocument {
+  text: string
+  filename: string
+  characters: number
+  truncated: boolean
+}
+
+/** Read a document once for the AI Summarizer's chat. */
+export function openDocumentChat(file: File): Promise<OpenedDocument> {
+  const form = new FormData()
+  form.append("file", file)
+  return postAi<OpenedDocument>("/ai/chat/open", form)
+}
+
+export interface DocumentChatRequest {
+  filename: string
+  text: string
+  history: { role: "user" | "assistant"; content: string }[]
+  prompt: string
+  summary?: "short" | "medium" | "detailed"
+}
+
+export async function askDocument(body: DocumentChatRequest): Promise<{ answer: string; model: string }> {
+  let resp: Response
+  try {
+    resp = await apiFetch("/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Could not reach the AI backend: ${msg}`)
+  }
+  if (!resp.ok) {
+    throw new Error(await errorDetail(resp, `Request failed (HTTP ${resp.status}).`))
+  }
+  return (await resp.json()) as { answer: string; model: string }
 }
 
 async function getJson<T>(path: string, fallback: string): Promise<T> {
@@ -341,6 +504,16 @@ export async function organizeApply(file: File, order: string): Promise<ToolResu
   return { blob, filename }
 }
 
+export interface SheetMeta {
+  rows: number
+  cols: number
+  used_rows: number
+  used_cols: number
+  /** True when the worksheet is larger than the grid the editor received —
+   *  the editor must say so, since a download only holds what is shown. */
+  truncated: boolean
+}
+
 export interface ExtractedPage {
   html: string
   /** The source page's real size in points, when known — lets the editor
@@ -352,6 +525,13 @@ export interface ExtractedPage {
    *  render edge-to-edge, with no padding and no scrollbar, or those
    *  coordinates land in the wrong place. False for normal flowing prose. */
   positioned?: boolean
+  /** "page" is a paper page (PDF/Word/slides); "sheet" is one worksheet of an
+   *  uploaded spreadsheet, rendered as a real cell grid instead. */
+  kind?: "page" | "sheet"
+  /** Worksheet name, for `kind: "sheet"`. */
+  name?: string | null
+  /** Grid size + truncation, for `kind: "sheet"`. */
+  meta?: SheetMeta | null
 }
 
 export interface ExtractHtmlResult {
@@ -373,6 +553,17 @@ export async function exportEditedHtml(
   format: string,
   basename: string,
 ) {
+  const result = await exportEditedHtmlFile(html, format, basename)
+  downloadBlob(result.blob, result.filename)
+}
+
+/** The same export, handed back as a file instead of downloaded — the chat
+ *  keeps results in its history and offers them as a download card. */
+export async function exportEditedHtmlFile(
+  html: string,
+  format: string,
+  basename: string,
+): Promise<ToolResult> {
   const form = new FormData()
   form.append("html", html)
   form.append("format", format)
@@ -389,7 +580,7 @@ export async function exportEditedHtml(
   }
   const blob = await resp.blob()
   const filename = filenameFromResponse(resp, `${basename}.${format}`)
-  downloadBlob(blob, filename)
+  return { blob, filename }
 }
 
 /** Export text as a .pdf, .docx or .txt download. */

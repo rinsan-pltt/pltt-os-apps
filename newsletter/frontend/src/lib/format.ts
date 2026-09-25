@@ -1,4 +1,23 @@
+import { usePlatform } from "@palettelab/sdk";
 import type { DocStatus } from "./types";
+
+const LOCALE_BY_LANGUAGE: Record<string, string> = {
+  en: "en-US",
+  ko: "ko-KR",
+  ja: "ja-JP",
+};
+
+/** Map a Palette OS language tag (e.g. "ja-JP", "ko") to a date locale. */
+export function localeForLanguage(language?: string | null): string {
+  const base = (language ?? "").toLowerCase().split("-")[0];
+  return LOCALE_BY_LANGUAGE[base] ?? "en-US";
+}
+
+/** BCP-47 locale for date formatting, following the Palette OS language. */
+export function useLocale(): string {
+  const platform = usePlatform() as unknown as { language?: string | null };
+  return localeForLanguage(platform?.language);
+}
 
 export function bytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -6,9 +25,9 @@ export function bytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function shortDate(iso: string): string {
+export function shortDate(iso: string, locale = "en-US"): string {
   try {
-    return new Date(iso).toLocaleDateString("en-US", {
+    return new Date(iso).toLocaleDateString(locale, {
       month: "short",
       day: "numeric",
       year: "numeric",

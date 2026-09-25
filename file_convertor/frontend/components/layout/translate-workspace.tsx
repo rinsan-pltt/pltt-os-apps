@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { FileDropzone } from "@/components/layout/file-dropzone"
 import { exportEditedHtml, translateDocument } from "@/lib/api"
+import { useWorkspaceFiles, type WorkspaceFileProps } from "@/hooks/use-workspace-files"
 import { useT, useRegistryText } from "@/lib/i18n"
 import type { Tool } from "@/lib/tools"
 
@@ -29,10 +30,17 @@ const LANGUAGES = [
   "Hindi", "Arabic", "Chinese (Simplified)", "Japanese", "Russian",
 ]
 
-export function TranslateWorkspace({ tool }: { tool: Tool }) {
+export function TranslateWorkspace({
+  tool,
+  files: filesProp,
+  // Aliased: this screen already has a local `onFilesChange` handler, and the
+  // prop is what that handler ultimately writes through.
+  onFilesChange: onFilesChangeProp,
+  embedded,
+}: { tool: Tool } & WorkspaceFileProps) {
   const t = useT()
   const reg = useRegistryText()
-  const [files, setFiles] = React.useState<File[]>([])
+  const [files, setFiles] = useWorkspaceFiles(filesProp, onFilesChangeProp)
   const [language, setLanguage] = React.useState("Korean")
   const [status, setStatus] = React.useState<Status>("idle")
   const [error, setError] = React.useState<string | null>(null)
@@ -49,6 +57,15 @@ export function TranslateWorkspace({ tool }: { tool: Tool }) {
       pendingHtml.current = ""
     }
   }, [status])
+
+  // The file can also change from the section workspace's upload bar, which
+  // never touches the handler below — so the same reset hangs off the file.
+  const stagedFile = files[0]
+  React.useEffect(() => {
+    setError(null)
+    setDirty(false)
+    setStatus("idle")
+  }, [stagedFile])
 
   // Uploading a file no longer translates instantly — it just stages the file.
   // Translation starts only when the user clicks the Translate button.
@@ -109,13 +126,17 @@ export function TranslateWorkspace({ tool }: { tool: Tool }) {
                 ))}
               </Select>
             </div>
-            <FileDropzone
-              accept={tool.accept}
-              multiple={false}
-              files={files}
-              onFilesChange={onFilesChange}
-              disabled={status === "translating"}
-            />
+            {/* The section workspace draws the upload for the whole category;
+                see the note in use-workspace-files.ts. */}
+            {!embedded && (
+              <FileDropzone
+                accept={tool.accept}
+                multiple={false}
+                files={files}
+                onFilesChange={onFilesChange}
+                disabled={status === "translating"}
+              />
+            )}
             <Button
               size="lg"
               className="w-full"

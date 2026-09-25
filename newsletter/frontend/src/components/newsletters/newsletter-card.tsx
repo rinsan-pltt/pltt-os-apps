@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Card } from "../ui/primitives";
-import { shortDate } from "../../lib/format";
+import { shortDate, useLocale } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import type { Newsletter } from "../../lib/types";
 
@@ -13,6 +13,7 @@ export function NewsletterCard({
   onOpen: (id: string) => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const palette = nl.themeSnapshot.palette;
   return (
     <button type="button" onClick={() => onOpen(nl.id)} className="group block w-full text-left">
@@ -47,7 +48,7 @@ export function NewsletterCard({
             {nl.focusPrompt ?? t("nlCard.noFocusSet")}
           </p>
           <p className="text-xs text-fg-subtle">
-            {t("nlCard.updatedAt", { date: shortDate(nl.updatedAt) })}
+            {t("nlCard.updatedAt", { date: shortDate(nl.updatedAt, locale) })}
           </p>
         </div>
       </Card>

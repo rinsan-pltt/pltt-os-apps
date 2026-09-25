@@ -33,4 +33,8 @@ dependencies = [
     # container -- legacy binary .hwp is read-only, via LibreOffice's import
     # filter (see api/core/hwpx_ops.py).
     "python-hwpx>=6.0",
+    # Unlock Document: removes the open-password from Word/Excel/PowerPoint
+    # files. Pure Python (cryptography + olefile), so safe for the hosted
+    # install; imported lazily, so a host without it fails only that tool.
+    "msoffcrypto-tool>=5.4",
 ]

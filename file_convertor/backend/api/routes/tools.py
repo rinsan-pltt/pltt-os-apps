@@ -24,7 +24,7 @@ import anyio
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from ..core import convert_ops, data_room, hwpx_ops, pdf_ops
+from ..core import convert_ops, data_room, documents, hwpx_ops, pdf_ops
 from ..core.files import cleanup, new_workdir, respond_with, save_bytes, save_upload
 from ..core.palette import ctx_dependency, require_permission
 
@@ -37,6 +37,9 @@ POWERPOINT = {".ppt", ".pptx", ".odp"}
 IMAGES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".gif"}
 TEXT = {".txt", ".md", ".log"}
 HWP = hwpx_ops.HWP_EXTS  # {".hwp", ".hwpx"}
+# PDF plus everything that converts to it. A tool that accepts DOCUMENTS gets
+# its inputs as PDFs regardless — see `document_wide` below.
+DOCUMENTS = documents.DOCUMENT_EXTS
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,9 @@ class Tool:
     run: Callable[[list[Path], Path, dict[str, str]], list[Path]]
     zip_name: str = "converted.zip"
     options: list[str] = field(default_factory=list)
+    # True for the tools that take any document: non-PDF inputs are rendered to
+    # PDF before `run` sees them, so `run` is written for PDFs only.
+    document_wide: bool = False
 
 
 def _single(inputs: list[Path]) -> Path:
@@ -67,28 +73,34 @@ TOOLS: dict[str, Tool] = {
     tool.slug: tool
     for tool in [
         # ---- Organize
-        Tool("merge-pdf", "Merge PDF", PDF, True,
-             lambda ins, wd, opts: pdf_ops.merge_pdfs(ins, wd)),
-        Tool("split-pdf", "Split PDF", PDF, False,
+        Tool("merge-pdf", "Merge Documents", DOCUMENTS, True,
+             lambda ins, wd, opts: pdf_ops.merge_pdfs(ins, wd),
+             document_wide=True),
+        Tool("split-pdf", "Split Document", DOCUMENTS, False,
              lambda ins, wd, opts: pdf_ops.split_pdf(_single(ins), wd, opts.get("ranges")),
-             zip_name="split_pages.zip", options=["ranges"]),
-        Tool("rotate-pdf", "Rotate PDF", PDF, False,
+             zip_name="split_pages.zip", options=["ranges"],
+             document_wide=True),
+        Tool("rotate-pdf", "Rotate Document", DOCUMENTS, False,
              lambda ins, wd, opts: pdf_ops.rotate_pdf(_single(ins), wd, int(opts.get("angle", "90"))),
-             options=["angle"]),
-        Tool("compare-pdf", "Compare PDF", PDF, True,
-             lambda ins, wd, opts: pdf_ops.compare_pdfs(*_pair(ins), wd)),
+             options=["angle"],
+             document_wide=True),
+        Tool("compare-pdf", "Compare Documents", DOCUMENTS, True,
+             lambda ins, wd, opts: pdf_ops.compare_pdfs(*_pair(ins), wd),
+             document_wide=True),
         # ---- Optimize
         Tool("compress-pdf", "Compress PDF", PDF, False,
              lambda ins, wd, opts: pdf_ops.compress_pdf(_single(ins), wd, opts.get("level", "medium")),
              options=["level"]),
         Tool("repair-pdf", "Repair PDF", PDF, False,
              lambda ins, wd, opts: pdf_ops.repair_pdf(_single(ins), wd)),
-        Tool("crop-pdf", "Crop PDF", PDF, False,
+        Tool("crop-pdf", "Crop Document", DOCUMENTS, False,
              lambda ins, wd, opts: pdf_ops.crop_pdf(
                  _single(ins), wd, opts.get("margins", "0,0,0,0"), rect=opts.get("rect")),
-             options=["margins", "rect"]),
-        Tool("pdf-to-pdfa", "PDF to PDF/A", PDF, False,
-             lambda ins, wd, opts: pdf_ops.pdf_to_pdfa(_single(ins), wd)),
+             options=["margins", "rect"],
+             document_wide=True),
+        Tool("pdf-to-pdfa", "Document to PDF/A", DOCUMENTS, False,
+             lambda ins, wd, opts: pdf_ops.pdf_to_pdfa(_single(ins), wd),
+             document_wide=True),
         # ---- Convert to PDF
         Tool("word-to-pdf", "Word to PDF", WORD, False,
              lambda ins, wd, opts: convert_ops.office_to_pdf(_single(ins), wd)),
@@ -111,20 +123,23 @@ TOOLS: dict[str, Tool] = {
              lambda ins, wd, opts: convert_ops.pdf_to_powerpoint(_single(ins), wd)),
         Tool("pdf-to-excel", "PDF to Excel", PDF, False,
              lambda ins, wd, opts: convert_ops.pdf_to_excel(_single(ins), wd)),
-        Tool("pdf-to-jpg", "PDF to JPG", PDF, False,
+        Tool("pdf-to-jpg", "Document to JPG", DOCUMENTS, False,
              lambda ins, wd, opts: convert_ops.pdf_to_jpg(_single(ins), wd),
-             zip_name="pdf_images.zip"),
-        Tool("pdf-to-text", "PDF to Text", PDF, False,
-             lambda ins, wd, opts: convert_ops.pdf_to_text(_single(ins), wd)),
-        Tool("pdf-to-markdown", "PDF to Markdown", PDF, False,
-             lambda ins, wd, opts: convert_ops.pdf_to_markdown(_single(ins), wd)),
+             zip_name="pdf_images.zip",
+             document_wide=True),
+        Tool("pdf-to-text", "Document to Text", DOCUMENTS, False,
+             lambda ins, wd, opts: convert_ops.pdf_to_text(_single(ins), wd),
+             document_wide=True),
+        Tool("pdf-to-markdown", "Document to Markdown", DOCUMENTS, False,
+             lambda ins, wd, opts: convert_ops.pdf_to_markdown(_single(ins), wd),
+             document_wide=True),
         Tool("pdf-to-hwp", "PDF to HWPX", PDF, False,
              lambda ins, wd, opts: hwpx_ops.pdf_to_hwpx(_single(ins), wd)),
         Tool("ocr-pdf", "OCR PDF", PDF, False,
              lambda ins, wd, opts: convert_ops.ocr_pdf(_single(ins), wd, opts.get("language", "eng")),
              options=["language"]),
         # ---- Edit
-        Tool("watermark-pdf", "Watermark", PDF, False,
+        Tool("watermark-pdf", "Watermark", DOCUMENTS, False,
              lambda ins, wd, opts: pdf_ops.watermark_pdf(
                  _single(ins), wd,
                  text=opts.get("text", ""),
@@ -134,19 +149,22 @@ TOOLS: dict[str, Tool] = {
                  x=opts.get("x"), y=opts.get("y"),
                  width=opts.get("width"), rotate=opts.get("rotate"),
              ),
-             options=["text", "position", "opacity", "color", "x", "y", "width", "rotate"]),
-        Tool("page-numbers-pdf", "Page numbers", PDF, False,
+             options=["text", "position", "opacity", "color", "x", "y", "width", "rotate"],
+             document_wide=True),
+        Tool("page-numbers-pdf", "Page numbers", DOCUMENTS, False,
              lambda ins, wd, opts: pdf_ops.add_page_numbers(
                  _single(ins), wd,
                  position=opts.get("position", "bottom-center"),
                  start=int(opts.get("start", "1")),
                  fmt=opts.get("format", "{n}"),
              ),
-             options=["position", "start", "format"]),
-        Tool("redact-pdf", "Redact PDF", PDF, False,
+             options=["position", "start", "format"],
+             document_wide=True),
+        Tool("redact-pdf", "Redact Document", DOCUMENTS, False,
              lambda ins, wd, opts: pdf_ops.redact_pdf(_single(ins), wd, opts.get("term", "")),
-             options=["term"]),
-        Tool("sign-pdf", "Sign PDF", PDF | IMAGES, True,
+             options=["term"],
+             document_wide=True),
+        Tool("sign-pdf", "Sign Document", DOCUMENTS | IMAGES, True,
              lambda ins, wd, opts: pdf_ops.sign_pdf(
                  ins, wd,
                  page=opts.get("page", "last"),
@@ -154,13 +172,18 @@ TOOLS: dict[str, Tool] = {
                  width_pt=float(opts.get("width", "160")),
                  x=opts.get("x"), y=opts.get("y"),
              ),
-             options=["page", "position", "width", "x", "y"]),
+             options=["page", "position", "width", "x", "y"],
+             document_wide=True),
         # ---- Security
-        Tool("protect-pdf", "Protect PDF", PDF, False,
-             lambda ins, wd, opts: pdf_ops.protect_pdf(_single(ins), wd, opts.get("password", "")),
+        # Not document-wide: Word/Excel/PowerPoint keep their own format (the
+        # file itself asks for the password); the rest become a locked PDF.
+        Tool("protect-pdf", "Protect Document", DOCUMENTS, False,
+             lambda ins, wd, opts: documents.protect_document(_single(ins), wd, opts.get("password", "")),
              options=["password"]),
-        Tool("unlock-pdf", "Unlock PDF", PDF, False,
-             lambda ins, wd, opts: pdf_ops.unlock_pdf(_single(ins), wd, opts.get("password", "")),
+        # Not document-wide: it returns the file in its own format, so it takes
+        # only what it can really unlock (see documents.UNLOCKABLE_EXTS).
+        Tool("unlock-pdf", "Unlock Document", documents.UNLOCKABLE_EXTS, False,
+             lambda ins, wd, opts: documents.unlock_document(_single(ins), wd, opts.get("password", "")),
              options=["password"]),
         # ---- Images
         Tool("image-converter", "Image Converter", IMAGES, True,
@@ -251,8 +274,14 @@ async def run_tool(slug: str, request: Request, ctx: object = ctx_dependency):
         for path in inputs:
             await data_room.try_save_upload(ctx, path.name, path.read_bytes())
 
-        # Conversions are CPU/subprocess-bound — keep the event loop free.
-        outputs = await anyio.to_thread.run_sync(tool.run, inputs, workdir, options)
+        # Conversions are CPU/subprocess-bound — keep the event loop free. A
+        # document-wide tool renders Word, Hancom and the rest to PDF first, in
+        # the same thread, so its `run` only ever sees PDFs.
+        def _run() -> list[Path]:
+            pdf_inputs = documents.ensure_pdfs(inputs, workdir) if tool.document_wide else inputs
+            return tool.run(pdf_inputs, workdir, options)
+
+        outputs = await anyio.to_thread.run_sync(_run)
         # `tool.title`, not the slug: the folder is read by a person browsing
         # the room, so it gets the name they saw on the tool they ran.
         for path in outputs:

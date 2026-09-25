@@ -56,6 +56,20 @@ npm run build:css
 
 > **Note:** Word/Excel/PowerPoint → PDF requires LibreOffice
 > (`brew install --cask libreoffice` on macOS). Everything else works out of the box.
+>
+> HTML → PDF picks the best engine the host has:
+>
+> 1. **Chromium via Playwright** — scripts run, so client-rendered pages (and
+>    most of the modern web) convert to what the reader actually sees. Needs
+>    both the package and the browser: `python -m playwright install chromium`.
+> 2. **LibreOffice** — no scripts, but images, tables and most CSS survive.
+> 3. **PyMuPDF Story** — text only, the last resort.
+>
+> Whichever renders it, the result is checked before it is returned: a sign-in
+> wall, a bot check, a "turn on JavaScript" notice or an empty app shell is
+> reported to the user as such instead of being handed over as a PDF of itself.
+> Sites that deliberately block automated visitors (Google Search, most social
+> networks) cannot be converted from a URL by any of these.
 
 ## Test & publish
 

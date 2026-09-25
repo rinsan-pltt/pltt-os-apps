@@ -11,18 +11,9 @@
 import * as React from "react"
 import { useParams, useRouter } from "next/navigation"
 
-import { AiWorkspace } from "@/components/layout/ai-workspace"
 import { AppShell } from "@/components/layout/app-shell"
 import { PageHeader } from "@/components/layout/page-header"
-import { CompareWorkspace } from "@/components/layout/compare-workspace"
-import { CropWorkspace } from "@/components/layout/crop-workspace"
-import { EditWorkspace } from "@/components/layout/edit-workspace"
-import { OrganizeWorkspace } from "@/components/layout/organize-workspace"
-import { SignWorkspace } from "@/components/layout/sign-workspace"
-import { ToolWorkspace } from "@/components/layout/tool-workspace"
-import { TranslateWorkspace } from "@/components/layout/translate-workspace"
-import { UrlWorkspace } from "@/components/layout/url-workspace"
-import { WatermarkWorkspace } from "@/components/layout/watermark-workspace"
+import { ToolPanel, isWideTool } from "@/components/layout/tool-panel"
 import { useRegistryText } from "@/lib/i18n"
 import { listDataRoom } from "@/lib/api"
 import { toolFileHref, toolHref, type Tool } from "@/lib/tools"
@@ -87,11 +78,8 @@ export function ToolView({ tool }: { tool: Tool }) {
     [router, tool.slug],
   )
 
-  const wide =
-    tool.kind === "edit" ||
-    tool.kind === "organize" ||
-    tool.kind === "translate" ||
-    tool.kind === "compare"
+  // Shared with the section workspace, which lays itself out the same way.
+  const wide = isWideTool(tool)
 
   // The page's width has to MATCH what the workspace renders, because this
   // header sits outside it: a container wider than its content is what left
@@ -103,10 +91,12 @@ export function ToolView({ tool }: { tool: Tool }) {
   const panel = tool.kind === "ai"
 
   return (
-    // The wide surfaces (editor, organize, translate, compare) start with the
-    // sidebar collapsed to a rail: they are where the canvas matters most, and
-    // a fixed 248px column takes it from exactly those routes.
-    <AppShell dense={wide}>
+    // The sidebar's width is the user's standing choice, not this route's: the
+    // wide surfaces (editor, organize, translate, compare) used to open with it
+    // collapsed to a rail, which meant it visibly closed on the way in and
+    // re-opened on the way out. Anyone who wants the canvas can collapse it
+    // once and it stays collapsed.
+    <AppShell>
       {/* The same band as home, Workflows and the Data Room, so a tool page
           opens the way every other page does: heading in a tinted strip closed
           by a rule, work beneath it. There is deliberately no "back to All
@@ -138,32 +128,12 @@ export function ToolView({ tool }: { tool: Tool }) {
         )}
       >
         <div className={cn("min-w-0", wide ? "" : panel ? "max-w-panel" : "max-w-form")}>
-        {tool.kind === "ai" ? (
-          <AiWorkspace tool={tool} />
-        ) : tool.kind === "edit" ? (
-          <EditWorkspace tool={tool} />
-        ) : tool.kind === "organize" ? (
-          <OrganizeWorkspace tool={tool} />
-        ) : tool.kind === "url" ? (
-          <UrlWorkspace tool={tool} />
-        ) : tool.kind === "sign" ? (
-          <SignWorkspace tool={tool} />
-        ) : tool.kind === "translate" ? (
-          <TranslateWorkspace tool={tool} />
-        ) : tool.kind === "compare" ? (
-          <CompareWorkspace tool={tool} />
-        ) : tool.kind === "watermark" ? (
-          <WatermarkWorkspace tool={tool} />
-        ) : tool.kind === "crop" ? (
-          <CropWorkspace tool={tool} />
-        ) : (
-          <ToolWorkspace
-            tool={tool}
-            dataRoomFile={roomFile}
-            onClearDataRoomFile={clearRoomFile}
-            onPickDataRoomFile={pickRoomFile}
-          />
-        )}
+        <ToolPanel
+          tool={tool}
+          dataRoomFile={roomFile}
+          onClearDataRoomFile={clearRoomFile}
+          onPickDataRoomFile={pickRoomFile}
+        />
         </div>
       </div>
     </AppShell>

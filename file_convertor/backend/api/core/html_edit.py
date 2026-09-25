@@ -16,6 +16,7 @@ import mimetypes
 import re
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import NamedTuple
 
 import anyio
 from fastapi import HTTPException
@@ -23,6 +24,7 @@ from fastapi import HTTPException
 from .files import output_dir
 from .hwpx_ops import HWP_EXTS
 from .office import convert_with_soffice, find_soffice
+from .sheet_grid import SPREADSHEET_EXTS
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,7 @@ TEXT_EXTS = {".txt", ".md", ".log"}
 PDF_EXTS = {".pdf"}
 SOFFICE_EXTS = {
     ".docx", ".doc", ".odt", ".rtf",
-    ".xlsx", ".xls", ".ods", ".csv",
+    ".xlsx", ".xlsm", ".xls", ".ods", ".csv",
     ".pptx", ".ppt", ".odp",
 }
 # .hwp/.hwpx are read by `hwpx_ops.hwp_to_html` (python-hwpx for .hwpx,
@@ -107,6 +109,17 @@ def extract_html(src: Path, workdir: Path, *, prefer_positioned: bool = False) -
             if pdf is not None:
                 return _pdf_to_positioned_html(pdf)
         return hwp_to_html(src, workdir)
+    if ext in SPREADSHEET_EXTS and prefer_positioned:
+        # A workbook is a grid, not a page: rendering it to PDF (the branch
+        # below) produces a flat picture of Calc's print area with no cells,
+        # no column letters and no row numbers -- nothing that can be edited
+        # as a spreadsheet. Read the real grid instead, and only fall through
+        # if the file turns out not to be a readable workbook.
+        from .sheet_grid import spreadsheet_to_html
+
+        grid = spreadsheet_to_html(src, workdir)
+        if grid:
+            return grid
     if ext in SOFFICE_EXTS:
         # For the editor (positioned), render the document to PDF via
         # LibreOffice first, then reuse the exact positioned-PDF pipeline. This
@@ -145,7 +158,23 @@ async def extract_html_bounded(
         )
 
 
-PageChunk = tuple[str, "float | None", "float | None", bool]  # (html, width_pt, height_pt, positioned)
+class PageChunk(NamedTuple):
+    """One rendered unit of the opened document. `kind="page"` is a paper
+    page (a real PDF/Office page, sized in points); `kind="sheet"` is a
+    worksheet grid, which has no page size at all -- it is as wide as its
+    columns and as long as its rows."""
+
+    html: str
+    width_pt: "float | None"
+    height_pt: "float | None"
+    positioned: bool
+    kind: str = "page"
+    name: "str | None" = None
+    # Sheet chunks only: {rows, cols, used_rows, used_cols, truncated} — the
+    # grid is capped (see sheet_grid.MAX_ROWS/MAX_COLS), and the editor has to
+    # be able to tell the user when it is showing less than the whole sheet.
+    meta: "dict | None" = None
+
 
 # The positioned-HTML fallback wraps each PDF page in its own
 # `<div id="pageN" style="width:...pt;height:...pt">` (see
@@ -154,6 +183,32 @@ _POSITIONED_PAGE_RE = re.compile(
     r'<div class="pdf-page"><div id="page\d+" style="width:([\d.]+)pt;height:([\d.]+)pt[^"]*">(.*?)</div>\s*</div>',
     re.DOTALL,
 )
+# A spreadsheet arrives as one `<div class="xl-sheet" data-sheet-name="...">`
+# per worksheet (see sheet_grid.py) -- each becomes its own grid in the editor.
+_SHEET_RE = re.compile(r'<div class="xl-sheet"([^>]*)>(.*?)</div>', re.DOTALL)
+_SHEET_ATTR_RE = re.compile(r'data-([a-z-]+)="([^"]*)"')
+
+
+def _sheet_attrs(attrs: str) -> dict:
+    return {k: html_lib.unescape(v) for k, v in _SHEET_ATTR_RE.findall(attrs)}
+
+
+def _sheet_meta(attrs: dict) -> dict:
+    def number(key: str) -> int:
+        try:
+            return int(attrs.get(key, "0"))
+        except ValueError:
+            return 0
+
+    return {
+        "rows": number("rows"),
+        "cols": number("cols"),
+        "used_rows": number("used-rows"),
+        "used_cols": number("used-cols"),
+        "truncated": attrs.get("truncated") == "true",
+    }
+
+
 # The pdf2docx/LibreOffice pipeline marks the first paragraph of each new
 # source page this way -- pdf2docx inserts a real hard page break for every
 # original PDF page boundary when it rebuilds the DOCX.
@@ -175,21 +230,38 @@ def split_into_pages(html: str) -> list[PageChunk]:
     coordinates land in the wrong place. `positioned=False` is normal
     flowing prose (pdf2docx/LibreOffice reconstruction, or plain text),
     which wants the padded "document" look and can safely scroll if
-    reconstructed content runs longer than the original page."""
+    reconstructed content runs longer than the original page.
+
+    `kind="sheet"` chunks (one per worksheet of an uploaded spreadsheet)
+    have no page geometry at all: the editor renders them as a scrollable
+    grid named after the worksheet, not as a paper page."""
+    sheets = [(_sheet_attrs(attrs), body) for attrs, body in _SHEET_RE.findall(html)]
+    if sheets:
+        return [
+            PageChunk(
+                body, None, None, False, "sheet",
+                attrs.get("sheet-name") or f"Sheet{i + 1}",
+                _sheet_meta(attrs),
+            )
+            for i, (attrs, body) in enumerate(sheets)
+        ]
+
     positioned = _POSITIONED_PAGE_RE.findall(html)
     if positioned:
-        return [(body, float(w), float(h), True) for w, h, body in positioned]
+        return [PageChunk(body, float(w), float(h), True) for w, h, body in positioned]
 
     breaks = list(_PAGE_BREAK_RE.finditer(html))
     if not breaks:
-        return [(html, None, None, False)]
+        return [PageChunk(html, None, None, False)]
     chunks: list[str] = []
     start = 0
     for m in breaks:
         chunks.append(html[start : m.start()])
         start = m.start()
     chunks.append(html[start:])
-    return [(c, None, None, False) for c in chunks if c.strip()] or [(html, None, None, False)]
+    return [PageChunk(c, None, None, False) for c in chunks if c.strip()] or [
+        PageChunk(html, None, None, False)
+    ]
 
 
 def real_page_sizes(src: Path, workdir: Path) -> list[tuple[float, float]]:
@@ -806,6 +878,10 @@ def _parse_export_pages(html: str) -> list[dict]:
             "w": w,
             "h": h,
             "positioned": (el.get("data-positioned") == "true"),
+            # "page" (paper) or "sheet" (a worksheet grid) — a sheet exports
+            # back to a real workbook rather than through a PDF render.
+            "kind": el.get("data-kind") or "page",
+            "name": el.get("data-sheet-name") or None,
         })
     return pages
 
@@ -949,6 +1025,35 @@ def _build_export_pdf(html: str, stem: str, workdir: Path) -> Path:
     return _html_to_pdf_fallback(flowable, stem, workdir)
 
 
+SPREADSHEET_EXTS_NO_DOT = {ext.lstrip(".") for ext in SPREADSHEET_EXTS}
+
+
+def _export_spreadsheet(grids: list[dict], fmt: str, stem: str, workdir: Path) -> Path:
+    """Edited worksheet grids back to a workbook in `fmt`. .xlsx is written
+    directly by openpyxl; .xls/.ods are converted from it by LibreOffice (and
+    fall back to the .xlsx when LibreOffice is absent, which still opens in
+    Excel/Calc — unlike a PDF)."""
+    from .sheet_grid import grid_page_to_csv, grid_pages_to_workbook
+
+    out_dir = output_dir(workdir)
+    if fmt == "csv":
+        # A .csv is a single sheet of text — take it straight from the grid.
+        return grid_page_to_csv(grids[0], out_dir / f"{stem}.csv")
+    xlsx = grid_pages_to_workbook(grids, workdir / f"{stem}__grid.xlsx")
+    if fmt in ("xlsx", "xlsm"):
+        final = out_dir / f"{stem}.xlsx"
+        xlsx.replace(final)
+        return final
+    if find_soffice():
+        try:
+            return convert_with_soffice(xlsx, out_dir, fmt)
+        except HTTPException:
+            pass  # fall through to handing back the .xlsx
+    final = out_dir / f"{stem}.xlsx"
+    xlsx.replace(final)
+    return final
+
+
 def export_html(html: str, fmt: str, stem: str, workdir: Path) -> Path:
     """Export the edited HTML in `fmt` — normally the document's ORIGINAL
     extension, so a PDF downloads as PDF, a DOCX as DOCX, a PPTX as PPTX, etc.
@@ -988,6 +1093,13 @@ def export_html(html: str, fmt: str, stem: str, workdir: Path) -> Path:
         if pages and pages[0].get("w") and pages[0].get("h"):
             page = PageGeometry.from_pt(pages[0]["w"], pages[0]["h"])
         return html_to_hwpx(_strip_positioned_markup(content), stem, workdir, page=page)
+
+    if fmt in SPREADSHEET_EXTS_NO_DOT:
+        grids = [p for p in _parse_export_pages(html) if p["kind"] == "sheet"]
+        if grids:
+            # The document arrived as a grid, so it leaves as one: cells stay
+            # live cells instead of being flattened into a PDF and re-imported.
+            return _export_spreadsheet(grids, fmt, stem, workdir)
 
     pdf_path = _build_export_pdf(html, stem, workdir)
 

@@ -8,11 +8,13 @@ import { BusyPanel } from "@/components/ui/busy-panel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { FileDropzone } from "@/components/layout/file-dropzone"
 import { downloadBlob, runTool } from "@/lib/api"
 import { useT, useRegistryText } from "@/lib/i18n"
+import { passwordLengthProblem } from "@/lib/tools"
 import { firstTool, type Workflow } from "@/lib/workflows"
 
 type Status = "idle" | "running" | "done" | "error"
@@ -33,7 +35,9 @@ export function WorkflowRunner({ workflow }: { workflow: Workflow }) {
 
   const missingRequired = workflow.steps.some((step, i) =>
     (step.promptOptions ?? []).some(
-      (opt) => "required" in opt && opt.required && !(promptValues[`${i}.${opt.name}`] ?? "").trim(),
+      (opt) =>
+        ("required" in opt && opt.required && !(promptValues[`${i}.${opt.name}`] ?? "").trim()) ||
+        passwordLengthProblem(opt, promptValues[`${i}.${opt.name}`] ?? "") !== null,
     ),
   )
   const canRun = files.length > 0 && !missingRequired && status !== "running"
@@ -95,7 +99,7 @@ export function WorkflowRunner({ workflow }: { workflow: Workflow }) {
           </div>
 
           <FileDropzone
-            accept={entryTool.accept}
+            accept={workflow.accept ?? entryTool.accept}
             multiple={entryTool.multiple}
             capture={entryTool.capture}
             files={files}
@@ -128,10 +132,19 @@ export function WorkflowRunner({ workflow }: { workflow: Workflow }) {
                           </option>
                         ))}
                       </Select>
+                    ) : opt.kind === "password" ? (
+                      <PasswordInput
+                        id={`wf-${i}-${opt.name}`}
+                        minLength={opt.minLength}
+                        maxLength={opt.maxLength}
+                        placeholder={"placeholder" in opt ? reg.wfOptPlaceholder(workflow.slug, i, opt.name, opt.placeholder) : ""}
+                        value={promptValues[`${i}.${opt.name}`] ?? ""}
+                        onChange={(e) => setPromptValue(i, opt.name, e.target.value)}
+                        disabled={status === "running"}
+                      />
                     ) : (
                       <Input
                         id={`wf-${i}-${opt.name}`}
-                        type={opt.kind === "password" ? "password" : "text"}
                         placeholder={"placeholder" in opt ? reg.wfOptPlaceholder(workflow.slug, i, opt.name, opt.placeholder) : ""}
                         value={promptValues[`${i}.${opt.name}`] ?? ""}
                         onChange={(e) => setPromptValue(i, opt.name, e.target.value)}

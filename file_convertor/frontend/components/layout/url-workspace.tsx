@@ -6,16 +6,25 @@ import { Download, Globe, Loader2, RefreshCw } from "lucide-react"
 import { Alert } from "@/components/ui/alert"
 import { BusyPanel } from "@/components/ui/busy-panel"
 import { Button } from "@/components/ui/button"
+import { PanelContent, PanelShell } from "@/components/ui/panel-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { downloadBlob, runUrlTool, type ToolResult } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import { useT, useRegistryText } from "@/lib/i18n"
 import type { Tool } from "@/lib/tools"
 
 type Status = "idle" | "working" | "done" | "error"
 
-export function UrlWorkspace({ tool }: { tool: Tool }) {
+export function UrlWorkspace({
+  tool,
+  /** Rendered inside the section workspace, which heads the panel itself. */
+  embedded,
+}: {
+  tool: Tool
+  embedded?: boolean
+}) {
   const t = useT()
   const reg = useRegistryText()
   const [url, setUrl] = React.useState("")
@@ -41,13 +50,18 @@ export function UrlWorkspace({ tool }: { tool: Tool }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-form space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">{reg.toolTitle(tool)}</CardTitle>
-          <CardDescription>{reg.toolDescription(tool)}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    // Embedded, the URL field fills the section's card — capped at the form
+    // measure it sat in the card's left corner once the section went full
+    // width. The standalone page keeps its centred form.
+    <div className={cn("w-full min-w-0 space-y-6", !embedded && "mx-auto max-w-form")}>
+      <PanelShell embedded={embedded}>
+        {!embedded && (
+          <CardHeader>
+            <CardTitle className="text-xl">{reg.toolTitle(tool)}</CardTitle>
+            <CardDescription>{reg.toolDescription(tool)}</CardDescription>
+          </CardHeader>
+        )}
+        <PanelContent embedded={embedded} className="space-y-6">
           <div className="grid gap-1.5">
             <Label htmlFor="page-url">{t("url.pageUrl")}</Label>
             <div className="relative">
@@ -81,7 +95,9 @@ export function UrlWorkspace({ tool }: { tool: Tool }) {
             <BusyPanel label={t("common.converting")} />
           )}
 
-          <div className="flex items-center gap-3">
+          {/* Held to the form measure so the button sits on the left at the
+              same width as every other tool's, not stretched across the card. */}
+          <div className="flex max-w-form items-center gap-3">
             <Button size="lg" className="flex-1" disabled={!canRun} onClick={run}>
               {status === "working" ? (
                 <>
@@ -107,10 +123,10 @@ export function UrlWorkspace({ tool }: { tool: Tool }) {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </PanelContent>
+      </PanelShell>
 
-      <p className="text-center text-xs text-muted-foreground">{t("url.note")}</p>
+      <p className={cn("text-xs text-muted-foreground", !embedded && "text-center")}>{t("url.note")}</p>
     </div>
   )
 }

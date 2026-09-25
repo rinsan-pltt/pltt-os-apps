@@ -293,7 +293,8 @@
   background: var(--pos-bg);
   color: var(--pos-t1);
   font-family: "Pretendard Variable", Inter, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans JP", sans-serif;
   transition: background 200ms ease-out;
 }
 .pos-root[data-pos-theme="light"],

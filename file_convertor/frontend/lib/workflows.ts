@@ -3,7 +3,7 @@
  *  normal call to POST /api/tools/{slug}, chained client-side. Only tools
  *  that return exactly one file (never a zip) are chainable. */
 
-import { getTool, TOOLS, type Tool, type ToolOption } from "./tools"
+import { getTool, NEW_PASSWORD_LENGTH, TOOLS, type Tool, type ToolOption } from "./tools"
 
 export interface WorkflowStep {
   toolSlug: string
@@ -21,6 +21,10 @@ export interface Workflow {
   icon: string
   color: string
   steps: WorkflowStep[]
+  /** Narrower than the first step's `accept` when a LATER step needs it:
+   *  Unlock takes a locked .docx and returns a .docx, which PDF to Word
+   *  cannot read. */
+  accept?: string
 }
 
 export const WORKFLOWS: Workflow[] = [
@@ -52,6 +56,7 @@ export const WORKFLOWS: Workflow[] = [
     description: "Remove a PDF's password, then convert it to an editable Word document.",
     icon: "Unlock",
     color: "bg-sky-100 text-sky-600 dark:bg-sky-950 dark:text-sky-400",
+    accept: ".pdf",
     steps: [
       {
         toolSlug: "unlock-pdf",
@@ -75,7 +80,7 @@ export const WORKFLOWS: Workflow[] = [
         toolSlug: "protect-pdf",
         label: "Adding password",
         promptOptions: [
-          { kind: "password", name: "password", label: "New password", placeholder: "Choose a password", required: true },
+          { kind: "password", name: "password", label: "New password", placeholder: "Choose a password", required: true, ...NEW_PASSWORD_LENGTH },
         ],
       },
     ],
